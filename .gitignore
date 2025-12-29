@@ -1,0 +1,25 @@
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# Outputs / résultats
+output/
+outputs/
+figures/
+data_test/
+data/
+
+# Fichiers générés
+*.png
+*.jpg
+*.csv
+*.jpeg
+
+# Fichiers système
+.DS_Store
+__pycache__/
+*.pyc
+
+# Fichiers confidentiels
+cookies.txt
