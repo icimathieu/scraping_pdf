@@ -5,6 +5,7 @@ env/
 
 # Data
 data/
+data_process/
 
 # Outputs
 output/
@@ -24,3 +25,7 @@ __pycache__/
 
 # Fichiers confidentiels
 cookies.txt
+
+# Autres 
+note_memoire_scraping.md
+scripts/scraping_gallica_v1.py

@@ -1,0 +1,256 @@
+import argparse
+import csv
+import json
+import re
+import time
+from collections import deque
+from pathlib import Path
+from typing import Any, Dict, List
+
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+IIIF_PRESENTATION_BASE_URL = "https://gallica.bnf.fr/iiif"
+ARK_PATTERN = re.compile(r"(ark:/12148/[a-z0-9]+)", re.IGNORECASE)
+NON_ALNUM_PATTERN = re.compile(r"[^a-zA-Z0-9_.-]+")
+
+
+class RateLimiter:
+    def __init__(self, requests_per_minute: int) -> None:
+        self.requests_per_minute = max(1, requests_per_minute)
+        self.window_seconds = 60.0
+        self.timestamps = deque()
+
+    def wait_turn(self) -> None:
+        now = time.monotonic()
+        while self.timestamps and (now - self.timestamps[0]) > self.window_seconds:
+            self.timestamps.popleft()
+        if len(self.timestamps) >= self.requests_per_minute:
+            sleep_for = self.window_seconds - (now - self.timestamps[0]) + 0.05
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+            now = time.monotonic()
+            while self.timestamps and (now - self.timestamps[0]) > self.window_seconds:
+                self.timestamps.popleft()
+        self.timestamps.append(time.monotonic())
+
+
+def build_session(user_agent: str) -> requests.Session:
+    retry = Retry(
+        total=5,
+        connect=5,
+        read=5,
+        backoff_factor=1.0,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset(["GET"]),
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session = requests.Session()
+    session.headers.update({"User-Agent": user_agent})
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+def sanitize_path_part(value: str, fallback: str) -> str:
+    clean = NON_ALNUM_PATTERN.sub("_", value).strip("._")
+    return clean if clean else fallback
+
+
+def normalize_issue_ark(value: str) -> str:
+    match = ARK_PATTERN.search(value)
+    if not match:
+        raise ValueError(f"ARK introuvable pour le numero: {value}")
+    return match.group(1)
+
+
+def manifest_url_from_issue_ark(issue_ark: str) -> str:
+    return f"{IIIF_PRESENTATION_BASE_URL}/{issue_ark}/manifest.json"
+
+
+def load_payload(path: Path) -> Dict[str, Any]:
+    with path.open("r", encoding="utf-8") as fh:
+        payload = json.load(fh)
+    if not isinstance(payload, dict):
+        raise ValueError("Le fichier d'entree doit contenir un objet JSON.")
+    return payload
+
+
+def ensure_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    items = payload.get("items")
+    if isinstance(items, list):
+        return items
+
+    numeros = payload.get("numeros", [])
+    urls = payload.get("urls", [])
+    if not isinstance(numeros, list) or not isinstance(urls, list):
+        raise ValueError("Format non supporte: ni 'items', ni listes 'numeros/urls'.")
+    if len(numeros) != len(urls):
+        raise ValueError("Les listes 'numeros' et 'urls' n'ont pas la meme longueur.")
+
+    rebuilt_items: List[Dict[str, Any]] = []
+    for numero_id, issue_ark in zip(numeros, urls):
+        rebuilt_items.append(
+            {
+                "numero_id": numero_id,
+                "issue_ark": issue_ark,
+                "revue": "inconnue",
+            }
+        )
+    payload["items"] = rebuilt_items
+    return rebuilt_items
+
+
+def save_json(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+
+
+def save_csv(path: Path, items: List[Dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        "revue",
+        "parent_ark_date",
+        "year",
+        "day_of_year",
+        "numero_id",
+        "issue_ark",
+        "precision",
+        "manifest_url",
+        "manifest_path",
+        "manifest_status",
+        "manifest_error",
+    ]
+    with path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for item in items:
+            writer.writerow({key: item.get(key, "") for key in fieldnames})
+
+
+def save_manifest(manifest_path: Path, manifest: Dict[str, Any]) -> None:
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    with manifest_path.open("w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, ensure_ascii=False, indent=2)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Etape 2: recupere les manifests IIIF pour chaque numero Gallica."
+    )
+    parser.add_argument(
+        "--input",
+        default="input/arks_numeros.json",
+        help="JSON d'entree contenant une liste 'items'.",
+    )
+    parser.add_argument(
+        "--output",
+        default="input/arks_numeros.json",
+        help="JSON de sortie enrichi avec les infos de manifest.",
+    )
+    parser.add_argument(
+        "--manifest-root",
+        default="data_process",
+        help="Dossier racine de sauvegarde des manifests par revue.",
+    )
+    parser.add_argument(
+        "--output-csv",
+        default="input/tableau_arks_numeros.csv",
+        help="CSV de sortie enrichi avec les infos de manifest.",
+    )
+    parser.add_argument("--requests-per-minute", type=int, default=5)
+    parser.add_argument("--timeout-seconds", type=int, default=15)
+    parser.add_argument(
+        "--user-agent",
+        default="memoire-gallica-scraper/1.0 (+contact-local)",
+        help="User-Agent envoye a Gallica.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-telecharge les manifests meme si le fichier existe deja.",
+    )
+    args = parser.parse_args()
+
+    input_path = Path(args.input)
+    output_path = Path(args.output)
+    output_csv_path = Path(args.output_csv)
+    manifest_root = Path(args.manifest_root)
+
+    payload = load_payload(input_path)
+    items = ensure_items(payload)
+    session = build_session(args.user_agent)
+    limiter = RateLimiter(args.requests_per_minute)
+
+    success_count = 0
+    skipped_count = 0
+    error_count = 0
+
+    for item in items:
+        numero_id = str(item.get("numero_id", "")).strip()
+        issue_ark_raw = str(item.get("issue_ark", "")).strip()
+        revue = sanitize_path_part(str(item.get("revue", "inconnue")), "inconnue")
+        numero_safe = sanitize_path_part(numero_id, "numero")
+
+        if not numero_id or not issue_ark_raw:
+            item["manifest_status"] = "error"
+            item["manifest_error"] = "numero_id ou issue_ark manquant"
+            error_count += 1
+            continue
+
+        try:
+            issue_ark = normalize_issue_ark(issue_ark_raw)
+        except ValueError as exc:
+            item["manifest_status"] = "error"
+            item["manifest_error"] = str(exc)
+            error_count += 1
+            continue
+
+        manifest_url = manifest_url_from_issue_ark(issue_ark)
+        manifest_path = manifest_root / revue / f"{numero_safe}.manifest.json"
+        item["manifest_url"] = manifest_url
+        item["manifest_path"] = str(manifest_path.as_posix())
+
+        if manifest_path.exists() and not args.force:
+            item["manifest_status"] = "exists"
+            item.pop("manifest_error", None)
+            skipped_count += 1
+            continue
+
+        try:
+            limiter.wait_turn()
+            response = session.get(manifest_url, timeout=args.timeout_seconds)
+            response.raise_for_status()
+            manifest = response.json()
+            save_manifest(manifest_path, manifest)
+            item["manifest_status"] = "downloaded"
+            item.pop("manifest_error", None)
+            success_count += 1
+        except Exception as exc:
+            item["manifest_status"] = "error"
+            item["manifest_error"] = str(exc)
+            error_count += 1
+
+    payload["total_issues"] = len(items)
+    payload["manifest_collection"] = {
+        "requests_per_minute": args.requests_per_minute,
+        "manifest_root": str(manifest_root.as_posix()),
+        "downloaded": success_count,
+        "existing": skipped_count,
+        "errors": error_count,
+    }
+    payload.pop("numeros", None)
+    payload.pop("urls", None)
+
+    save_json(output_path, payload)
+    save_csv(output_csv_path, items)
+    print(f"Termine: {success_count} manifests telecharges, {skipped_count} deja presents, {error_count} erreurs")
+    print(f"JSON mis a jour: {output_path}")
+    print(f"CSV mis a jour: {output_csv_path}")
+    print(f"Manifests: {manifest_root}")
+
+
+if __name__ == "__main__":
+    main()
