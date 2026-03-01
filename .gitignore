@@ -7,6 +7,7 @@ env/
 data/
 data_process/
 images_process/
+pdf_process/
 
 # Outputs
 output/
