@@ -125,6 +125,39 @@ def load_revues(path: Path) -> Dict[str, str]:
         return json.load(fh)
 
 
+def error_code_from_exception(exc: Exception) -> str:
+    if isinstance(exc, requests.HTTPError) and getattr(exc, "response", None) is not None:
+        status_code = exc.response.status_code
+        return str(status_code) if status_code is not None else "http_error"
+    if isinstance(exc, requests.Timeout):
+        return "timeout"
+    if isinstance(exc, ET.ParseError):
+        return "parse_error"
+    return exc.__class__.__name__
+
+
+def build_error_row(
+    revue: str,
+    parent_ark_date: str,
+    stage: str,
+    exc: Exception,
+    year: int | None = None,
+) -> dict:
+    return {
+        "revue": revue,
+        "parent_ark_date": parent_ark_date,
+        "year": year if year is not None else "",
+        "day_of_year": "",
+        "numero_id": "",
+        "issue_ark": "",
+        "precision": "",
+        "status": "error",
+        "error_stage": stage,
+        "error_code": error_code_from_exception(exc),
+        "error_message": str(exc),
+    }
+
+
 def save_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
@@ -141,6 +174,10 @@ def save_csv(path: Path, rows: List[dict]) -> None:
         "numero_id",
         "issue_ark",
         "precision",
+        "status",
+        "error_stage",
+        "error_code",
+        "error_message",
     ]
     with path.open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames)
@@ -189,18 +226,60 @@ def main() -> None:
     rows: List[dict] = []
 
     for revue_name, revue_ark_or_url in revues.items():
-        parent_ark_date = normalize_revue_ark(revue_ark_or_url)
+        parent_ark_date = ""
+        try:
+            parent_ark_date = normalize_revue_ark(revue_ark_or_url)
+        except Exception as exc:
+            print(f"[ERROR][step1][normalize_revue_ark][{revue_name}] {exc}")
+            rows.append(
+                build_error_row(
+                    revue=revue_name,
+                    parent_ark_date="",
+                    stage="normalize_revue_ark",
+                    exc=exc,
+                )
+            )
+            continue
+
         print(f"[revue] {revue_name} -> {parent_ark_date}")
-        years_root = fetch_issues_xml(session, limiter, parent_ark_date)
-        years = [
-            y
-            for y in parse_years(years_root)
-            if args.start_year <= y <= args.end_year
-        ]
-        print(f"  {len(years)} années retenues entre {args.start_year} et {args.end_year}")
+        try:
+            years_root = fetch_issues_xml(session, limiter, parent_ark_date)
+            years = [
+                y
+                for y in parse_years(years_root)
+                if args.start_year <= y <= args.end_year
+            ]
+            print(
+                f"  {len(years)} années retenues entre {args.start_year} et {args.end_year}"
+            )
+        except Exception as exc:
+            print(f"[ERROR][step1][years][{revue_name}] {exc}")
+            rows.append(
+                build_error_row(
+                    revue=revue_name,
+                    parent_ark_date=parent_ark_date,
+                    stage="years",
+                    exc=exc,
+                )
+            )
+            continue
 
         for year in years:
-            issues_root = fetch_issues_xml(session, limiter, parent_ark_date, year=year)
+            try:
+                issues_root = fetch_issues_xml(session, limiter, parent_ark_date, year=year)
+            except Exception as exc:
+                print(f"[ERROR][step1][issues_by_year][{revue_name}][{year}] {exc}")
+                rows.append(
+                    build_error_row(
+                        revue=revue_name,
+                        parent_ark_date=parent_ark_date,
+                        stage="issues_by_year",
+                        exc=exc,
+                        year=year,
+                    )
+                )
+                continue
+
             for issue_ark, day_of_year, precision in parse_issues(issues_root):
                 numero_id = build_numero_id(
                     revue_name, precision, year, day_of_year, issue_ark
@@ -213,18 +292,27 @@ def main() -> None:
                     "numero_id": numero_id,
                     "issue_ark": issue_ark,
                     "precision": precision,
+                    "status": "ok",
+                    "error_stage": "",
+                    "error_code": "",
+                    "error_message": "",
                 }
                 rows.append(row)
 
+    ok_count = sum(1 for row in rows if row.get("status") == "ok")
+    error_count = sum(1 for row in rows if row.get("status") == "error")
+
     payload = {
         "period": {"start_year": args.start_year, "end_year": args.end_year},
-        "total_issues": len(rows),
+        "total_issues": ok_count,
+        "total_errors": error_count,
+        "total_events": len(rows),
         "items": rows,
     }
 
     save_json(output_json, payload)
     save_csv(output_csv, rows)
-    print(f"Terminé: {len(rows)} fascicules exportés")
+    print(f"Terminé: {ok_count} fascicules exportés, {error_count} erreurs")
     print(f"JSON: {output_json}")
     print(f"CSV : {output_csv}")
 
