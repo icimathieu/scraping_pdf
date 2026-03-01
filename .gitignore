@@ -3,12 +3,13 @@
 venv/
 env/
 
-# Outputs / résultats
+# Data
+data/
+
+# Outputs
 output/
 outputs/
 figures/
-data_test/
-data/
 
 # Fichiers générés
 *.png
