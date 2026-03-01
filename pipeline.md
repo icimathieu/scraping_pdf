@@ -97,14 +97,20 @@ Sous-etapes detaillees:
       - numero_id
       - issue_ark
       - precision
+      - status
+      - error_stage
+      - error_code
+      - error_message
 
 12. Ecriture des fichiers.
     - JSON final:
       - period {start_year, end_year}
       - total_issues
+      - total_errors
+      - total_events
       - items[]
     - CSV final (sans index explicite):
-      - revue,parent_ark_date,year,day_of_year,numero_id,issue_ark,precision
+      - revue,parent_ark_date,year,day_of_year,numero_id,issue_ark,precision,status,error_stage,error_code,error_message
 
 13. Trace d'execution console.
     - Affiche la revue en cours.
@@ -165,7 +171,7 @@ Sous-etapes detaillees:
 
 6. Strategie idempotente locale.
    - Si le manifest existe deja et pas --force:
-     - manifest_status = "exists"
+     - status = "ok"
      - skip du telechargement.
 
 7. Telechargement du manifest si necessaire.
@@ -174,46 +180,93 @@ Sous-etapes detaillees:
    - raise_for_status + parsing JSON.
    - Ecriture du manifest sur disque.
    - Mise a jour item:
-     - manifest_status = "downloaded"
+     - status = "ok"
    - En cas d'erreur:
-     - manifest_status = "error"
-     - manifest_error = message erreur.
+     - status = "error"
+     - error_stage = "manifest_download" (ou autre stage manifest_*)
+     - error_code = code structure (ex: 429, timeout, value_error)
+     - error_message = message erreur.
 
 8. Ecriture des sorties enrichies.
    - JSON:
      - conserve items[]
      - ajoute/maj manifest_collection (downloaded/existing/errors).
    - CSV:
-     - revue,parent_ark_date,year,day_of_year,numero_id,issue_ark,precision,manifest_url,manifest_path,manifest_status,manifest_error
+     - revue,parent_ark_date,year,day_of_year,numero_id,issue_ark,precision,manifest_url,manifest_path,status,error_stage,error_code,error_message
 
 Commande d'execution type:
 - .venv/bin/python -u scripts/scraping_manifest_gallica.py --input input/arks_numeros.json --output input/arks_numeros.json --output-csv input/tableau_arks_numeros.csv --manifest-root data_process
 
 
-ETAPE 3 - manifest IIIF -> images bitonales full
-------------------------------------------------
+ETAPE 3 - manifest IIIF -> images bitonales full (deja codee)
+-------------------------------------------------------------
+Script de reference:
+- scripts/scraping_images_gallica.py
+
 Objectif:
 - Telecharger les pages image d'un numero, en bitonal full, puis passer au numero suivant.
 
-Sous-etapes:
-1. Charger les manifests recuperes a l'etape 2.
-2. Pour chaque manifest, lister les canvases/pages dans l'ordre.
-3. Pour chaque page:
-   - extraire l'URL image source (resource.@id ou service.@id selon structure manifest).
-4. Construire l'URL IIIF bitonale full pour la page.
-   - Exemple de patron IIIF:
-     - <base_iiif>/full/full/0/bitonal.jpg
-   - Adapter exactement au endpoint Gallica accepte.
-5. Telecharger page par page avec:
-   - limite de debit conforme (5/min si endpoint full/full),
-   - retries/backoff,
-   - verif de taille/status.
-6. Organiser les sorties disque:
-   - dossier par numero_id,
-   - nommage stable (ex: page_0001.jpg).
-7. Ecrire un index de progression:
-   - pages totales, pages ok, pages en erreur, date/heure, temps.
-8. Ne passer au manifest suivant qu'une fois le precedent termine (ou marque termine avec erreurs).
+Entree:
+- input/arks_numeros.json (items enrichis avec issue_ark + manifest_path ou manifest_root)
+
+Sorties:
+- JSON enrichi: input/arks_numeros.json
+- CSV enrichi: input/tableau_arks_numeros.csv
+- Images:
+  - images_process/<revue>/<numero_id>/page_0001.jpg ...
+
+Sous-etapes detaillees:
+1. Chargement de la configuration CLI.
+   - Parametres principaux:
+     - --input, --output, --output-csv
+     - --manifest-root (defaut: data_process)
+     - --image-root (defaut: images_process)
+     - --requests-per-minute (defaut: 5)
+     - --timeout-seconds
+     - --quality (defaut: bitonal)
+     - --format (defaut: jpg)
+     - --max-pages (0 = toutes)
+     - --force
+
+2. Resolution du manifest par item.
+   - Priorite a item.manifest_path si present.
+   - Sinon fallback: <manifest_root>/<revue>/<numero_id>.manifest.json.
+
+3. Chargement/parsing du manifest.
+   - Lecture JSON locale.
+   - Verification sequences/canvases.
+   - En cas d'erreur:
+     - status = "error"
+     - error_stage = images_manifest_path|images_manifest_load|images_manifest_parse
+     - error_code / error_message renseignes.
+
+4. Construction des URLs image par page.
+   - Extraction de service.@id (ou fallback resource.@id).
+   - Construction URL:
+     - <service_id>/full/full/0/bitonal.jpg
+
+5. Telechargement page par page.
+   - Rate limit 5 req/min.
+   - Retry/backoff sur 429/5xx.
+   - Skip si fichier existe et taille > 0 (sauf --force).
+   - Ecriture dans images_process/<revue>/<numero_id>/page_XXXX.jpg.
+
+6. Mise a jour des compteurs item.
+   - images_total
+   - images_downloaded
+   - images_existing
+   - images_errors
+   - image_output_dir
+
+7. Normalisation d'erreurs (homogene avec etapes 1 et 2).
+   - status = ok|error
+   - error_stage
+   - error_code
+   - error_message
+
+8. Ecriture finale.
+   - JSON: maj items + images_collection + totaux.
+   - CSV: colonnes metier + manifest + images + status/error_*.
 
 
 ETAPE 4 - Industrialisation / automatisation
@@ -221,35 +274,90 @@ ETAPE 4 - Industrialisation / automatisation
 Objectif:
 - Orchestrer les 3 etapes avec reprise et idempotence.
 
-Structure recommandee:
-- step1_collect_issues.py
-- step2_collect_manifests.py
-- step3_download_images.py
-- run_pipeline.py (orchestrateur)
+Script de reference:
+- scripts/run_pipeline_gallica.py
 
-Correspondance avec scripts actuels:
-- step1_collect_issues.py -> scripts/scraping_arks_numeros_gallica.py
-- step2_collect_manifests.py -> scripts/scraping_manifest_gallica.py
-- step3_download_images.py -> scripts/scraping_images_gallica.py (a implementer)
+Entrees principales:
+- input/arks_revues.json
+- input/arks_numeros.json
+- input/tableau_arks_numeros.csv
 
-Sous-etapes orchestrateur:
-1. Lire input/arks_revues.json.
-2. Lancer etape 1 seulement pour les revues non traitees.
-3. Lancer etape 2 seulement pour les ARK-numeros sans manifest local.
-4. Lancer etape 3 seulement pour les pages/images manquantes.
-5. Produire un etat de progression persistant (ex: data_process/state.json).
+Sorties principales:
+- data_process/state.json
+- input/arks_numeros.json (mis a jour a chaque etape)
+- input/tableau_arks_numeros.csv (mis a jour a chaque etape)
+- data_process/<revue>/<numero_id>.manifest.json
+- images_process/<revue>/<numero_id>/page_XXXX.jpg
 
-Regles anti-retravail:
-1. Idempotence par fichier de sortie:
-   - si manifest existe et est valide, skip.
-   - si image page existe et taille > 0, skip.
-2. State store (JSON/SQLite) avec statuts:
-   - revue: pending|done|error
-   - issue_ark: manifest_done, images_done, last_error
-   - timestamps updated_at
-3. CLI orchestrateur:
-   - --resume (par defaut)
-   - --force (recalcul complet ou partiel)
+Sous-etapes detaillees:
+1. Charger l'etat de pipeline.
+   - Lecture de data_process/state.json.
+   - Initialisation si absent:
+     - revues {}
+     - runs []
+
+2. Determiner les revues a retraiter pour l'etape 1.
+   - Pour chaque revue de input/arks_revues.json:
+     - traiter si revue absente de state
+     - ou statut precedent != done
+     - ou ARK modifie
+     - ou --force-step1.
+
+3. Executer l'etape 1 uniquement pour les revues en attente.
+   - Generation d'un JSON temporaire avec les seules revues a traiter.
+   - Appel de scripts/scraping_arks_numeros_gallica.py.
+   - Merge des items produits avec input/arks_numeros.json existant:
+     - remplacement uniquement pour les revues retraitees.
+   - Mise a jour de state["revues"][revue] avec:
+     - status done|error
+     - ark
+     - updated_at
+     - last_error
+
+4. Executer l'etape 2 seulement si necessaire.
+   - Comptage des manifests manquants.
+   - Si aucun manifest manquant (et pas --force-manifests): skip.
+   - Sinon appel de scripts/scraping_manifest_gallica.py.
+
+5. Executer l'etape 3 seulement si necessaire.
+   - Comptage des numeros encore incomplets en images.
+   - Si aucun numero restant (et pas --force-images): skip.
+   - Sinon appel de scripts/scraping_images_gallica.py.
+
+6. Journalisation et reprise.
+   - Chaque execution est enregistree dans state["runs"] avec:
+     - started_at
+     - finished_at
+     - step1_rc / step2_rc / step3_rc
+     - status final done|error
+   - Tous les outputs des scripts sont streames en console.
+
+Regles anti-repetition effectivement implementees:
+1. Etape 1:
+   - ne relance pas les revues deja done avec meme ARK (sauf --force-step1).
+2. Etape 2:
+   - skip si manifest deja present (sauf --force-manifests).
+3. Etape 3:
+   - skip si images deja completes (sauf --force-images).
+   - dans le script image, skip fichier page deja present et non vide (sauf --force).
+
+Parametres CLI utiles de l'orchestrateur:
+- --revues-input
+- --numeros-json
+- --numeros-csv
+- --manifest-root
+- --image-root
+- --state-file
+- --issues-rpm (defaut 10)
+- --manifest-rpm (defaut 5)
+- --image-rpm (defaut 5)
+- --force-step1
+- --force-manifests
+- --force-images
+- --disable-step1 / --disable-step2 / --disable-step3
+
+Commande d'execution type:
+- .venv/bin/python -u scripts/run_pipeline_gallica.py --revues-input input/arks_revues.json --numeros-json input/arks_numeros.json --numeros-csv input/tableau_arks_numeros.csv --manifest-root data_process --image-root images_process
 
 
 Notes transverses

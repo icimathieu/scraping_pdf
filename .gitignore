@@ -6,6 +6,7 @@ env/
 # Data
 data/
 data_process/
+images_process/
 
 # Outputs
 output/

@@ -77,6 +77,17 @@ def load_payload(path: Path) -> Dict[str, Any]:
     return payload
 
 
+def error_code_from_exception(exc: Exception) -> str:
+    if isinstance(exc, requests.HTTPError) and getattr(exc, "response", None) is not None:
+        status_code = exc.response.status_code
+        return str(status_code) if status_code is not None else "http_error"
+    if isinstance(exc, requests.Timeout):
+        return "timeout"
+    if isinstance(exc, ValueError):
+        return "value_error"
+    return exc.__class__.__name__
+
+
 def ensure_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     items = payload.get("items")
     if isinstance(items, list):
@@ -120,8 +131,10 @@ def save_csv(path: Path, items: List[Dict[str, Any]]) -> None:
         "precision",
         "manifest_url",
         "manifest_path",
-        "manifest_status",
-        "manifest_error",
+        "status",
+        "error_stage",
+        "error_code",
+        "error_message",
     ]
     with path.open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames)
@@ -189,22 +202,48 @@ def main() -> None:
     error_count = 0
 
     for item in items:
+        item.pop("manifest_status", None)
+        item.pop("manifest_error", None)
+
+        if str(item.get("status", "")).strip() == "error" and not str(
+            item.get("issue_ark", "")
+        ).strip():
+            # Erreur issue de l'etape 1 (pas d'ARK numero exploitable): on conserve l'etat.
+            print(
+                f"[ERROR][step2][skip_prior_error][{item.get('revue','')}][{item.get('numero_id','')}] "
+                f"{item.get('error_stage','')} {item.get('error_code','')} {item.get('error_message','')}"
+            )
+            skipped_count += 1
+            continue
+
         numero_id = str(item.get("numero_id", "")).strip()
         issue_ark_raw = str(item.get("issue_ark", "")).strip()
         revue = sanitize_path_part(str(item.get("revue", "inconnue")), "inconnue")
         numero_safe = sanitize_path_part(numero_id, "numero")
 
         if not numero_id or not issue_ark_raw:
-            item["manifest_status"] = "error"
-            item["manifest_error"] = "numero_id ou issue_ark manquant"
+            item["status"] = "error"
+            item["error_stage"] = "manifest_input_validation"
+            item["error_code"] = "missing_required_fields"
+            item["error_message"] = "numero_id ou issue_ark manquant"
+            print(
+                f"[ERROR][step2][manifest_input_validation][{item.get('revue','')}][{numero_id}] "
+                f"{item['error_message']}"
+            )
             error_count += 1
             continue
 
         try:
             issue_ark = normalize_issue_ark(issue_ark_raw)
         except ValueError as exc:
-            item["manifest_status"] = "error"
-            item["manifest_error"] = str(exc)
+            item["status"] = "error"
+            item["error_stage"] = "manifest_normalization"
+            item["error_code"] = error_code_from_exception(exc)
+            item["error_message"] = str(exc)
+            print(
+                f"[ERROR][step2][manifest_normalization][{item.get('revue','')}][{numero_id}] "
+                f"{item['error_code']} {item['error_message']}"
+            )
             error_count += 1
             continue
 
@@ -214,8 +253,10 @@ def main() -> None:
         item["manifest_path"] = str(manifest_path.as_posix())
 
         if manifest_path.exists() and not args.force:
-            item["manifest_status"] = "exists"
-            item.pop("manifest_error", None)
+            item["status"] = "ok"
+            item["error_stage"] = ""
+            item["error_code"] = ""
+            item["error_message"] = ""
             skipped_count += 1
             continue
 
@@ -225,15 +266,27 @@ def main() -> None:
             response.raise_for_status()
             manifest = response.json()
             save_manifest(manifest_path, manifest)
-            item["manifest_status"] = "downloaded"
-            item.pop("manifest_error", None)
+            item["status"] = "ok"
+            item["error_stage"] = ""
+            item["error_code"] = ""
+            item["error_message"] = ""
             success_count += 1
         except Exception as exc:
-            item["manifest_status"] = "error"
-            item["manifest_error"] = str(exc)
+            item["status"] = "error"
+            item["error_stage"] = "manifest_download"
+            item["error_code"] = error_code_from_exception(exc)
+            item["error_message"] = str(exc)
+            print(
+                f"[ERROR][step2][manifest_download][{item.get('revue','')}][{numero_id}] "
+                f"{item['error_code']} {item['error_message']}"
+            )
             error_count += 1
 
-    payload["total_issues"] = len(items)
+    payload["total_issues"] = sum(
+        1 for it in items if str(it.get("issue_ark", "")).strip()
+    )
+    payload["total_errors"] = sum(1 for it in items if str(it.get("status", "")).strip() == "error")
+    payload["total_events"] = len(items)
     payload["manifest_collection"] = {
         "requests_per_minute": args.requests_per_minute,
         "manifest_root": str(manifest_root.as_posix()),
