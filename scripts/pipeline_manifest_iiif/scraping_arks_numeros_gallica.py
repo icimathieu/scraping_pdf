@@ -38,6 +38,44 @@ class RateLimiter:
         self.timestamps.append(time.monotonic())
 
 
+class CircuitBreaker429:
+    def __init__(self, threshold: int, sleep_seconds: int) -> None:
+        self.threshold = max(1, threshold)
+        self.sleep_seconds = max(1, sleep_seconds)
+        self.consecutive_429 = 0
+
+    @staticmethod
+    def is_429_exception(exc: Exception) -> bool:
+        if isinstance(exc, requests.HTTPError) and getattr(exc, "response", None) is not None:
+            return exc.response.status_code == 429
+        if isinstance(exc, requests.exceptions.RetryError):
+            return "429" in str(exc)
+        return False
+
+    def record_success(self) -> None:
+        if self.consecutive_429 > 0:
+            print(
+                f"[INFO][circuit_breaker] reset consecutive_429={self.consecutive_429} after success"
+            )
+        self.consecutive_429 = 0
+
+    def record_failure(self, exc: Exception, context: str) -> None:
+        if not self.is_429_exception(exc):
+            self.consecutive_429 = 0
+            return
+        self.consecutive_429 += 1
+        print(
+            f"[WARN][circuit_breaker] 429 streak={self.consecutive_429}/{self.threshold} "
+            f"context={context}"
+        )
+        if self.consecutive_429 >= self.threshold:
+            print(
+                f"[WARN][circuit_breaker] Sleeping {self.sleep_seconds}s after {self.consecutive_429} consecutive 429"
+            )
+            time.sleep(self.sleep_seconds)
+            self.consecutive_429 = 0
+
+
 def build_session(user_agent: str) -> requests.Session:
     retry = Retry(
         total=5,
@@ -72,6 +110,7 @@ def normalize_issue_ark(value: str) -> str:
 def fetch_issues_xml(
     session: requests.Session,
     limiter: RateLimiter,
+    circuit_breaker: CircuitBreaker429,
     ark: str,
     year: int | None = None,
     timeout_seconds: int = 30,
@@ -80,9 +119,15 @@ def fetch_issues_xml(
     params = {"ark": ark}
     if year is not None:
         params["date"] = str(year)
-    response = session.get(ISSUES_URL, params=params, timeout=timeout_seconds)
-    response.raise_for_status()
-    return ET.fromstring(response.text)
+    context = f"ark={ark} year={year if year is not None else 'all'}"
+    try:
+        response = session.get(ISSUES_URL, params=params, timeout=timeout_seconds)
+        response.raise_for_status()
+        circuit_breaker.record_success()
+        return ET.fromstring(response.text)
+    except Exception as exc:
+        circuit_breaker.record_failure(exc, context=context)
+        raise
 
 
 def parse_years(root: ET.Element) -> List[int]:
@@ -213,6 +258,8 @@ def main() -> None:
         default="memoire-gallica-scraper/1.0 (+contact-local)",
         help="User-Agent envoyé à Gallica.",
     )
+    parser.add_argument("--cb-threshold", type=int, default=5)
+    parser.add_argument("--cb-sleep-seconds", type=int, default=600)
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -222,6 +269,7 @@ def main() -> None:
     revues = load_revues(input_path)
     session = build_session(args.user_agent)
     limiter = RateLimiter(args.requests_per_minute)
+    circuit_breaker = CircuitBreaker429(args.cb_threshold, args.cb_sleep_seconds)
 
     rows: List[dict] = []
 
@@ -243,7 +291,7 @@ def main() -> None:
 
         print(f"[revue] {revue_name} -> {parent_ark_date}")
         try:
-            years_root = fetch_issues_xml(session, limiter, parent_ark_date)
+            years_root = fetch_issues_xml(session, limiter, circuit_breaker, parent_ark_date)
             years = [
                 y
                 for y in parse_years(years_root)
@@ -266,7 +314,13 @@ def main() -> None:
 
         for year in years:
             try:
-                issues_root = fetch_issues_xml(session, limiter, parent_ark_date, year=year)
+                issues_root = fetch_issues_xml(
+                    session,
+                    limiter,
+                    circuit_breaker,
+                    parent_ark_date,
+                    year=year,
+                )
             except Exception as exc:
                 print(f"[ERROR][step1][issues_by_year][{revue_name}][{year}] {exc}")
                 rows.append(

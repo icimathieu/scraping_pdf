@@ -34,6 +34,44 @@ class RateLimiter:
         self.timestamps.append(time.monotonic())
 
 
+class CircuitBreaker429:
+    def __init__(self, threshold: int, sleep_seconds: int) -> None:
+        self.threshold = max(1, threshold)
+        self.sleep_seconds = max(1, sleep_seconds)
+        self.consecutive_429 = 0
+
+    @staticmethod
+    def is_429_exception(exc: Exception) -> bool:
+        if isinstance(exc, requests.HTTPError) and getattr(exc, "response", None) is not None:
+            return exc.response.status_code == 429
+        if isinstance(exc, requests.exceptions.RetryError):
+            return "429" in str(exc)
+        return False
+
+    def record_success(self) -> None:
+        if self.consecutive_429 > 0:
+            print(
+                f"[INFO][circuit_breaker] reset consecutive_429={self.consecutive_429} after success"
+            )
+        self.consecutive_429 = 0
+
+    def record_failure(self, exc: Exception, context: str) -> None:
+        if not self.is_429_exception(exc):
+            self.consecutive_429 = 0
+            return
+        self.consecutive_429 += 1
+        print(
+            f"[WARN][circuit_breaker] 429 streak={self.consecutive_429}/{self.threshold} "
+            f"context={context}"
+        )
+        if self.consecutive_429 >= self.threshold:
+            print(
+                f"[WARN][circuit_breaker] Sleeping {self.sleep_seconds}s after {self.consecutive_429} consecutive 429"
+            )
+            time.sleep(self.sleep_seconds)
+            self.consecutive_429 = 0
+
+
 def build_session(user_agent: str) -> requests.Session:
     retry = Retry(
         total=5,
@@ -156,11 +194,22 @@ def build_image_url(service_id: str, quality: str, image_format: str) -> str:
     return f"{service_id}/full/full/0/{quality}.{image_format}"
 
 
-def download_binary(session: requests.Session, limiter: RateLimiter, url: str, timeout_seconds: int) -> bytes:
+def download_binary(
+    session: requests.Session,
+    limiter: RateLimiter,
+    circuit_breaker: CircuitBreaker429,
+    url: str,
+    timeout_seconds: int,
+) -> bytes:
     limiter.wait_turn()
-    response = session.get(url, timeout=timeout_seconds)
-    response.raise_for_status()
-    return response.content
+    try:
+        response = session.get(url, timeout=timeout_seconds)
+        response.raise_for_status()
+        circuit_breaker.record_success()
+        return response.content
+    except Exception as exc:
+        circuit_breaker.record_failure(exc, context=f"url={url}")
+        raise
 
 
 def main() -> None:
@@ -194,6 +243,8 @@ def main() -> None:
     )
     parser.add_argument("--requests-per-minute", type=int, default=5)
     parser.add_argument("--timeout-seconds", type=int, default=20)
+    parser.add_argument("--cb-threshold", type=int, default=5)
+    parser.add_argument("--cb-sleep-seconds", type=int, default=600)
     parser.add_argument("--quality", default="bitonal")
     parser.add_argument("--format", default="jpg")
     parser.add_argument(
@@ -224,6 +275,7 @@ def main() -> None:
     items = ensure_items(payload)
     session = build_session(args.user_agent)
     limiter = RateLimiter(args.requests_per_minute)
+    circuit_breaker = CircuitBreaker429(args.cb_threshold, args.cb_sleep_seconds)
 
     processed_ok = 0
     processed_error = 0
@@ -336,7 +388,13 @@ def main() -> None:
             try:
                 service_id = extract_canvas_image_service_id(canvas)
                 image_url = build_image_url(service_id, args.quality, args.format)
-                content = download_binary(session, limiter, image_url, args.timeout_seconds)
+                content = download_binary(
+                    session,
+                    limiter,
+                    circuit_breaker,
+                    image_url,
+                    args.timeout_seconds,
+                )
                 if not content:
                     raise ValueError("Contenu image vide")
                 image_file.write_bytes(content)

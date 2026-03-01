@@ -36,6 +36,44 @@ class RateLimiter:
         self.timestamps.append(time.monotonic())
 
 
+class CircuitBreaker429:
+    def __init__(self, threshold: int, sleep_seconds: int) -> None:
+        self.threshold = max(1, threshold)
+        self.sleep_seconds = max(1, sleep_seconds)
+        self.consecutive_429 = 0
+
+    @staticmethod
+    def is_429_exception(exc: Exception) -> bool:
+        if isinstance(exc, requests.HTTPError) and getattr(exc, "response", None) is not None:
+            return exc.response.status_code == 429
+        if isinstance(exc, requests.exceptions.RetryError):
+            return "429" in str(exc)
+        return False
+
+    def record_success(self) -> None:
+        if self.consecutive_429 > 0:
+            print(
+                f"[INFO][circuit_breaker] reset consecutive_429={self.consecutive_429} after success"
+            )
+        self.consecutive_429 = 0
+
+    def record_failure(self, exc: Exception, context: str) -> None:
+        if not self.is_429_exception(exc):
+            self.consecutive_429 = 0
+            return
+        self.consecutive_429 += 1
+        print(
+            f"[WARN][circuit_breaker] 429 streak={self.consecutive_429}/{self.threshold} "
+            f"context={context}"
+        )
+        if self.consecutive_429 >= self.threshold:
+            print(
+                f"[WARN][circuit_breaker] Sleeping {self.sleep_seconds}s after {self.consecutive_429} consecutive 429"
+            )
+            time.sleep(self.sleep_seconds)
+            self.consecutive_429 = 0
+
+
 def build_session(user_agent: str) -> requests.Session:
     retry = Retry(
         total=5,
@@ -175,6 +213,8 @@ def main() -> None:
     )
     parser.add_argument("--requests-per-minute", type=int, default=5)
     parser.add_argument("--timeout-seconds", type=int, default=15)
+    parser.add_argument("--cb-threshold", type=int, default=5)
+    parser.add_argument("--cb-sleep-seconds", type=int, default=600)
     parser.add_argument(
         "--user-agent",
         default="memoire-gallica-scraper/1.0 (+contact-local)",
@@ -196,6 +236,7 @@ def main() -> None:
     items = ensure_items(payload)
     session = build_session(args.user_agent)
     limiter = RateLimiter(args.requests_per_minute)
+    circuit_breaker = CircuitBreaker429(args.cb_threshold, args.cb_sleep_seconds)
 
     success_count = 0
     skipped_count = 0
@@ -265,6 +306,7 @@ def main() -> None:
             response = session.get(manifest_url, timeout=args.timeout_seconds)
             response.raise_for_status()
             manifest = response.json()
+            circuit_breaker.record_success()
             save_manifest(manifest_path, manifest)
             item["status"] = "ok"
             item["error_stage"] = ""
@@ -272,6 +314,9 @@ def main() -> None:
             item["error_message"] = ""
             success_count += 1
         except Exception as exc:
+            circuit_breaker.record_failure(
+                exc, context=f"revue={item.get('revue','')} numero_id={numero_id}"
+            )
             item["status"] = "error"
             item["error_stage"] = "manifest_download"
             item["error_code"] = error_code_from_exception(exc)

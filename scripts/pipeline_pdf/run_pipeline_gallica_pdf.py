@@ -33,15 +33,9 @@ def parse_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def sanitize_path_part(value: str, fallback: str) -> str:
-    keep = []
-    for char in value:
-        if char.isalnum() or char in ("_", "-", "."):
-            keep.append(char)
-        else:
-            keep.append("_")
-    cleaned = "".join(keep).strip("._")
-    return cleaned if cleaned else fallback
+def resolve_path(path_value: str, root: Path) -> Path:
+    path = Path(path_value)
+    return path if path.is_absolute() else root / path
 
 
 def stream_command(step_name: str, cmd: List[str], cwd: Path) -> int:
@@ -108,23 +102,18 @@ def merge_step1_items(
     return current_payload
 
 
-def build_manifest_path(item: Dict[str, Any], manifest_root: Path) -> Path:
-    manifest_path = str(item.get("manifest_path", "")).strip()
-    if manifest_path:
-        return Path(manifest_path)
-    revue = sanitize_path_part(str(item.get("revue", "inconnue")), "inconnue")
-    numero = sanitize_path_part(str(item.get("numero_id", "")), "numero")
-    return manifest_root / revue / f"{numero}.manifest.json"
-
-
-def manifest_work_remaining(items: List[Dict[str, Any]], manifest_root: Path) -> int:
+def pdf_work_remaining(items: List[Dict[str, Any]]) -> int:
     remaining = 0
     for item in items:
         issue_ark = str(item.get("issue_ark", "")).strip()
         if not issue_ark:
             continue
-        manifest_path = build_manifest_path(item, manifest_root)
-        if not manifest_path.exists():
+        pdf_path = str(item.get("pdf_path", "")).strip()
+        if not pdf_path:
+            remaining += 1
+            continue
+        p = Path(pdf_path)
+        if not p.exists() or p.stat().st_size <= 0:
             remaining += 1
     return remaining
 
@@ -136,10 +125,10 @@ def images_work_remaining(items: List[Dict[str, Any]]) -> int:
         if not issue_ark:
             continue
         total = parse_int(item.get("images_total"), default=0)
-        downloaded = parse_int(item.get("images_downloaded"), default=0)
+        converted = parse_int(item.get("images_converted"), default=0)
         existing = parse_int(item.get("images_existing"), default=0)
         errors = parse_int(item.get("images_errors"), default=0)
-        done = total > 0 and errors == 0 and (downloaded + existing) >= total
+        done = total > 0 and errors == 0 and (converted + existing) >= total
         if not done:
             remaining += 1
     return remaining
@@ -147,43 +136,56 @@ def images_work_remaining(items: List[Dict[str, Any]]) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Etape 4: orchestrateur des 3 scripts de scraping Gallica."
+        description="Orchestrateur pipeline PDF Gallica (3 etapes)."
     )
     parser.add_argument("--revues-input", default="input/arks_revues.json")
     parser.add_argument("--numeros-json", default="input/arks_numeros.json")
     parser.add_argument("--numeros-csv", default="input/tableau_arks_numeros.csv")
-    parser.add_argument("--manifest-root", default="data_process")
+    parser.add_argument("--pdf-root", default="pdf_process")
     parser.add_argument("--image-root", default="images_process")
-    parser.add_argument("--state-file", default="data_process/state.json")
+    parser.add_argument("--state-file", default="data_process/state_pdf.json")
     parser.add_argument("--start-year", type=int, default=1870)
     parser.add_argument("--end-year", type=int, default=1914)
     parser.add_argument("--issues-rpm", type=int, default=10)
-    parser.add_argument("--manifest-rpm", type=int, default=5)
-    parser.add_argument("--image-rpm", type=int, default=5)
-    parser.add_argument("--timeout-manifest", type=int, default=15)
-    parser.add_argument("--timeout-image", type=int, default=20)
-    parser.add_argument("--quality", default="bitonal")
-    parser.add_argument("--format", default="jpg")
-    parser.add_argument("--max-pages", type=int, default=0)
+    parser.add_argument("--pdf-rpm", type=int, default=1)
+    parser.add_argument("--image-rpm", type=int, default=120)
+    parser.add_argument("--step1-cb-threshold", type=int, default=5)
+    parser.add_argument("--step1-cb-sleep-seconds", type=int, default=600)
+    parser.add_argument("--step2-cb-threshold", type=int, default=5)
+    parser.add_argument("--step2-cb-sleep-seconds", type=int, default=600)
+    parser.add_argument("--step3-cb-threshold", type=int, default=5)
+    parser.add_argument("--step3-cb-sleep-seconds", type=int, default=600)
+    parser.add_argument("--timeout-pdf", type=int, default=30)
+    parser.add_argument("--dpi", type=int, default=200)
+    parser.add_argument("--bitonal-threshold", type=int, default=180)
+    parser.add_argument("--image-format", choices=("png", "tiff"), default="png")
+    parser.add_argument("--poppler-path", default="")
     parser.add_argument("--user-agent", default="memoire-gallica-scraper/1.0 (+contact-local)")
     parser.add_argument("--python-bin", default=sys.executable)
-    parser.add_argument("--resume", action="store_true", default=True)
     parser.add_argument("--force-step1", action="store_true")
-    parser.add_argument("--force-manifests", action="store_true")
+    parser.add_argument("--force-pdf", action="store_true")
     parser.add_argument("--force-images", action="store_true")
     parser.add_argument("--disable-step1", action="store_true")
     parser.add_argument("--disable-step2", action="store_true")
     parser.add_argument("--disable-step3", action="store_true")
     args = parser.parse_args()
 
-    cwd = Path(".").resolve()
-    revues_input = Path(args.revues_input)
-    numeros_json = Path(args.numeros_json)
-    numeros_csv = Path(args.numeros_csv)
-    manifest_root = Path(args.manifest_root)
-    image_root = Path(args.image_root)
-    state_file = Path(args.state_file)
-    tmp_dir = state_file.parent / "_tmp"
+    script_dir = Path(__file__).resolve().parent
+    project_root = script_dir.parent.parent
+    cwd = project_root
+
+    revues_input = resolve_path(args.revues_input, project_root)
+    numeros_json = resolve_path(args.numeros_json, project_root)
+    numeros_csv = resolve_path(args.numeros_csv, project_root)
+    pdf_root = resolve_path(args.pdf_root, project_root)
+    image_root = resolve_path(args.image_root, project_root)
+    state_file = resolve_path(args.state_file, project_root)
+
+    step1_script = script_dir / "scraping_arks_numeros_gallica_pdf.py"
+    step2_script = script_dir / "scraping_pdf.py"
+    step3_script = script_dir / "scraping_pdf_to_images.py"
+
+    tmp_dir = state_file.parent / "_tmp_pdf"
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
     revues = load_json(revues_input, default={})
@@ -206,7 +208,6 @@ def main() -> None:
     state["runs"].append(run_meta)
     save_json(state_file, state)
 
-    # STEP 1
     if args.disable_step1:
         print("[INFO][step1] Disabled by --disable-step1")
     else:
@@ -233,7 +234,7 @@ def main() -> None:
 
             step1_cmd = [
                 args.python_bin,
-                "scripts/scraping_arks_numeros_gallica.py",
+                str(step1_script),
                 "--input",
                 str(tmp_step1_input),
                 "--output-json",
@@ -246,6 +247,10 @@ def main() -> None:
                 str(args.end_year),
                 "--requests-per-minute",
                 str(args.issues_rpm),
+                "--cb-threshold",
+                str(args.step1_cb_threshold),
+                "--cb-sleep-seconds",
+                str(args.step1_cb_sleep_seconds),
                 "--user-agent",
                 args.user_agent,
             ]
@@ -304,42 +309,44 @@ def main() -> None:
     if not isinstance(items, list):
         items = []
 
-    # STEP 2
     if args.disable_step2:
         print("[INFO][step2] Disabled by --disable-step2")
     else:
-        pending_manifests = manifest_work_remaining(items, manifest_root)
-        if pending_manifests == 0 and not args.force_manifests:
-            print("[INFO][step2] Tous les manifests semblent deja presents. Skip.")
+        pending_pdf = pdf_work_remaining(items)
+        if pending_pdf == 0 and not args.force_pdf:
+            print("[INFO][step2] Tous les PDF semblent deja presents. Skip.")
             run_meta["step2_rc"] = 0
         else:
-            print(f"[INFO][step2] Manifests restants a traiter: {pending_manifests}")
+            print(f"[INFO][step2] PDF restants a traiter: {pending_pdf}")
             step2_cmd = [
                 args.python_bin,
-                "scripts/scraping_manifest_gallica.py",
+                str(step2_script),
                 "--input",
                 str(numeros_json),
                 "--output",
                 str(numeros_json),
                 "--output-csv",
                 str(numeros_csv),
-                "--manifest-root",
-                str(manifest_root),
+                "--pdf-root",
+                str(pdf_root),
                 "--requests-per-minute",
-                str(args.manifest_rpm),
+                str(args.pdf_rpm),
+                "--cb-threshold",
+                str(args.step2_cb_threshold),
+                "--cb-sleep-seconds",
+                str(args.step2_cb_sleep_seconds),
                 "--timeout-seconds",
-                str(args.timeout_manifest),
+                str(args.timeout_pdf),
                 "--user-agent",
                 args.user_agent,
             ]
-            if args.force_manifests:
+            if args.force_pdf:
                 step2_cmd.append("--force")
             rc = stream_command("step2", step2_cmd, cwd)
             run_meta["step2_rc"] = rc
             if rc != 0:
                 print("[ERROR][step2] Le script s'est termine avec erreur.")
 
-    # STEP 3
     payload_after_step2 = load_json(numeros_json, default={"items": []})
     if not isinstance(payload_after_step2, dict):
         payload_after_step2 = {"items": []}
@@ -352,36 +359,38 @@ def main() -> None:
     else:
         pending_images = images_work_remaining(items_after_step2)
         if pending_images == 0 and not args.force_images:
-            print("[INFO][step3] Tous les numeros semblent deja telecharges. Skip.")
+            print("[INFO][step3] Tous les numeros semblent deja convertis en JPG. Skip.")
             run_meta["step3_rc"] = 0
         else:
-            print(f"[INFO][step3] Numeros restant a traiter: {pending_images}")
+            print(f"[INFO][step3] Numeros restants a convertir: {pending_images}")
             step3_cmd = [
                 args.python_bin,
-                "scripts/scraping_images_gallica.py",
+                str(step3_script),
                 "--input",
                 str(numeros_json),
                 "--output",
                 str(numeros_json),
                 "--output-csv",
                 str(numeros_csv),
-                "--manifest-root",
-                str(manifest_root),
+                "--pdf-root",
+                str(pdf_root),
                 "--image-root",
                 str(image_root),
                 "--requests-per-minute",
                 str(args.image_rpm),
-                "--timeout-seconds",
-                str(args.timeout_image),
-                "--quality",
-                args.quality,
-                "--format",
-                args.format,
-                "--user-agent",
-                args.user_agent,
+                "--cb-threshold",
+                str(args.step3_cb_threshold),
+                "--cb-sleep-seconds",
+                str(args.step3_cb_sleep_seconds),
+                "--dpi",
+                str(args.dpi),
+                "--bitonal-threshold",
+                str(args.bitonal_threshold),
+                "--image-format",
+                args.image_format,
             ]
-            if args.max_pages > 0:
-                step3_cmd.extend(["--max-pages", str(args.max_pages)])
+            if args.poppler_path.strip():
+                step3_cmd.extend(["--poppler-path", args.poppler_path.strip()])
             if args.force_images:
                 step3_cmd.append("--force")
             rc = stream_command("step3", step3_cmd, cwd)
@@ -389,7 +398,6 @@ def main() -> None:
             if rc != 0:
                 print("[ERROR][step3] Le script s'est termine avec erreur.")
 
-    # Finalisation run state
     status = "done"
     for key in ("step1_rc", "step2_rc", "step3_rc"):
         rc = run_meta.get(key)
@@ -401,10 +409,10 @@ def main() -> None:
     state["last_run"] = run_meta["finished_at"]
     save_json(state_file, state)
 
-    print(f"[INFO][pipeline] Termine avec statut: {status}")
-    print(f"[INFO][pipeline] State: {state_file}")
-    print(f"[INFO][pipeline] JSON: {numeros_json}")
-    print(f"[INFO][pipeline] CSV: {numeros_csv}")
+    print(f"[INFO][pipeline_pdf] Termine avec statut: {status}")
+    print(f"[INFO][pipeline_pdf] State: {state_file}")
+    print(f"[INFO][pipeline_pdf] JSON: {numeros_json}")
+    print(f"[INFO][pipeline_pdf] CSV: {numeros_csv}")
 
 
 if __name__ == "__main__":
