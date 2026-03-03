@@ -160,6 +160,7 @@ def main() -> None:
     parser.add_argument("--bitonal-threshold", type=int, default=180)
     parser.add_argument("--image-format", choices=("png", "tiff"), default="tiff")
     parser.add_argument("--poppler-path", default="")
+    parser.add_argument("--delete-pdf-after-success", action="store_true")
     parser.add_argument("--user-agent", default="memoire-gallica-scraper/1.0 (+contact-local)")
     parser.add_argument("--python-bin", default=sys.executable)
     parser.add_argument("--force-step1", action="store_true")
@@ -391,6 +392,8 @@ def main() -> None:
             ]
             if args.poppler_path.strip():
                 step3_cmd.extend(["--poppler-path", args.poppler_path.strip()])
+            if args.delete_pdf_after_success:
+                step3_cmd.append("--delete-pdf-after-success")
             if args.force_images:
                 step3_cmd.append("--force")
             rc = stream_command("step3", step3_cmd, cwd)

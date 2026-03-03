@@ -113,6 +113,7 @@ def save_csv(path: Path, items: List[Dict[str, Any]]) -> None:
         "pdf_url",
         "pdf_path",
         "pdf_size_bytes",
+        "pdf_deleted",
         "image_output_dir",
         "images_total",
         "images_converted",
@@ -135,8 +136,36 @@ def resolve_pdf_path(item: Dict[str, Any], pdf_root: Path) -> Path:
     if pdf_path_raw:
         return Path(pdf_path_raw)
 
+    revue = sanitize_path_part(str(item.get("revue", "inconnue")), "inconnue")
     numero_id = sanitize_path_part(str(item.get("numero_id", "")), "numero")
-    return pdf_root / numero_id / f"{numero_id}.pdf"
+    new_layout = pdf_root / revue / numero_id / f"{numero_id}.pdf"
+    old_layout = pdf_root / numero_id / f"{numero_id}.pdf"
+    return new_layout if new_layout.exists() else old_layout
+
+
+def cleanup_empty_dirs(start_dir: Path, stop_dir: Path) -> None:
+    current = start_dir
+    try:
+        stop_resolved = stop_dir.resolve()
+    except Exception:
+        stop_resolved = stop_dir
+    while True:
+        if not current.exists():
+            break
+        try:
+            current_resolved = current.resolve()
+        except Exception:
+            current_resolved = current
+        if current_resolved == stop_resolved:
+            break
+        try:
+            current.rmdir()
+        except OSError:
+            break
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
 
 
 def convert_pdf_page_to_bitonal(
@@ -194,6 +223,7 @@ def main() -> None:
     parser.add_argument("--first-page", type=int, default=1)
     parser.add_argument("--last-page", type=int, default=0)
     parser.add_argument("--poppler-path", default="")
+    parser.add_argument("--delete-pdf-after-success", action="store_true")
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
@@ -254,6 +284,7 @@ def main() -> None:
 
         pdf_path = resolve_pdf_path(item, pdf_root)
         item["pdf_path"] = pdf_path.as_posix()
+        item["pdf_deleted"] = False
 
         output_dir = image_root / revue_safe / numero_safe
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -379,6 +410,22 @@ def main() -> None:
             item["error_stage"] = ""
             item["error_code"] = ""
             item["error_message"] = ""
+            if args.delete_pdf_after_success:
+                if pdf_path.exists():
+                    try:
+                        pdf_path.unlink()
+                        cleanup_empty_dirs(pdf_path.parent, pdf_root)
+                        item["pdf_deleted"] = True
+                        item["pdf_size_bytes"] = 0
+                        print(
+                            f"[INFO][step3][pdf_cleanup][{revue_raw}][{numero_id_raw}] PDF supprime: {pdf_path}"
+                        )
+                    except Exception as exc:
+                        item["pdf_deleted"] = False
+                        print(
+                            f"[WARN][step3][pdf_cleanup][{revue_raw}][{numero_id_raw}] "
+                            f"Echec suppression PDF: {exc}"
+                        )
             converted_ok += 1
 
     payload["total_issues"] = sum(1 for it in items if str(it.get("issue_ark", "")).strip())
@@ -393,6 +440,7 @@ def main() -> None:
         "image_format": args.image_format,
         "dpi": args.dpi,
         "bitonal_threshold": args.bitonal_threshold,
+        "delete_pdf_after_success": args.delete_pdf_after_success,
         "converted_ok": converted_ok,
         "converted_error": converted_error,
         "skipped_prior_error": skipped_prior_error,
