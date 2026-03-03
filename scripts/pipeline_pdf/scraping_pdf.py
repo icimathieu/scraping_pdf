@@ -256,7 +256,8 @@ def main() -> None:
             continue
 
         pdf_url = f"https://gallica.bnf.fr/{issue_ark}.pdf"
-        output_dir = pdf_root / numero_id
+        revue = sanitize_path_part(str(item.get("revue", "inconnue")), "inconnue")
+        output_dir = pdf_root / revue / numero_id
         output_dir.mkdir(parents=True, exist_ok=True)
         pdf_path = output_dir / f"{numero_id}.pdf"
 
