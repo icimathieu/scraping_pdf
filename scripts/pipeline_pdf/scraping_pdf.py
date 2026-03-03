@@ -161,6 +161,31 @@ def save_csv(path: Path, items: List[Dict[str, Any]]) -> None:
             writer.writerow({key: item.get(key, "") for key in fieldnames})
 
 
+def cleanup_empty_dirs(start_dir: Path, stop_dir: Path) -> None:
+    current = start_dir
+    try:
+        stop_resolved = stop_dir.resolve()
+    except Exception:
+        stop_resolved = stop_dir
+    while True:
+        if not current.exists():
+            break
+        try:
+            current_resolved = current.resolve()
+        except Exception:
+            current_resolved = current
+        if current_resolved == stop_resolved:
+            break
+        try:
+            current.rmdir()
+        except OSError:
+            break
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+
 def download_binary(
     session: requests.Session,
     limiter: RateLimiter,
@@ -258,7 +283,6 @@ def main() -> None:
         pdf_url = f"https://gallica.bnf.fr/{issue_ark}.pdf"
         revue = sanitize_path_part(str(item.get("revue", "inconnue")), "inconnue")
         output_dir = pdf_root / revue / numero_id
-        output_dir.mkdir(parents=True, exist_ok=True)
         pdf_path = output_dir / f"{numero_id}.pdf"
 
         item["pdf_url"] = pdf_url
@@ -283,7 +307,10 @@ def main() -> None:
             )
             if not content:
                 raise ValueError("Contenu PDF vide")
-            pdf_path.write_bytes(content)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            tmp_path = output_dir / f".{numero_id}.pdf.part"
+            tmp_path.write_bytes(content)
+            tmp_path.replace(pdf_path)
             item["pdf_size_bytes"] = pdf_path.stat().st_size
             item["status"] = "ok"
             item["error_stage"] = ""
@@ -291,6 +318,13 @@ def main() -> None:
             item["error_message"] = ""
             downloaded_count += 1
         except Exception as exc:
+            tmp_path = output_dir / f".{numero_id}.pdf.part"
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
+            cleanup_empty_dirs(output_dir, pdf_root)
             item["status"] = "error"
             item["error_stage"] = "pdf_download"
             item["error_code"] = error_code_from_exception(exc)
