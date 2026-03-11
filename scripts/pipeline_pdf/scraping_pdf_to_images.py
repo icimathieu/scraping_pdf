@@ -120,6 +120,7 @@ def save_csv(path: Path, items: List[Dict[str, Any]]) -> None:
         "images_existing",
         "images_errors",
         "status",
+        "pipeline_status",
         "error_stage",
         "error_code",
         "error_message",
@@ -253,6 +254,7 @@ def main() -> None:
         if str(item.get("status", "")).strip() == "error" and not str(
             item.get("issue_ark", "")
         ).strip():
+            item["pipeline_status"] = "error"
             print(
                 f"[ERROR][step3][skip_prior_error][{item.get('revue','')}][{item.get('numero_id','')}] "
                 f"{item.get('error_stage','')} {item.get('error_code','')} {item.get('error_message','')}"
@@ -265,6 +267,7 @@ def main() -> None:
 
         if not revue_raw or not numero_id_raw:
             item["status"] = "error"
+            item["pipeline_status"] = "error"
             item["error_stage"] = "pdf_to_jpg_input_validation"
             item["error_code"] = "missing_required_fields"
             item["error_message"] = "revue ou numero_id manquant"
@@ -292,6 +295,7 @@ def main() -> None:
 
         if not pdf_path.exists() or pdf_path.stat().st_size <= 0:
             item["status"] = "error"
+            item["pipeline_status"] = "error"
             item["error_stage"] = "pdf_to_jpg_source"
             item["error_code"] = "pdf_not_found"
             item["error_message"] = f"PDF introuvable ou vide: {pdf_path}"
@@ -317,6 +321,7 @@ def main() -> None:
                 context=f"revue={revue_raw} numero_id={numero_id_raw} stage=pdfinfo"
             )
             item["status"] = "error"
+            item["pipeline_status"] = "error"
             item["error_stage"] = "pdf_to_jpg_pdfinfo"
             item["error_code"] = error_code_from_exception(exc)
             item["error_message"] = str(exc)
@@ -341,6 +346,7 @@ def main() -> None:
         end_page = min(end_page, total_pages)
         if start_page > end_page:
             item["status"] = "error"
+            item["pipeline_status"] = "error"
             item["error_stage"] = "pdf_to_jpg_page_range"
             item["error_code"] = "invalid_page_range"
             item["error_message"] = (
@@ -397,6 +403,7 @@ def main() -> None:
 
         if errors > 0:
             item["status"] = "error"
+            item["pipeline_status"] = "error"
             item["error_stage"] = "pdf_to_jpg_convert"
             item["error_code"] = first_error[0] if first_error else "unknown_error"
             item["error_message"] = first_error[1] if first_error else "Erreur de conversion non detaillee"
@@ -407,6 +414,7 @@ def main() -> None:
             converted_error += 1
         else:
             item["status"] = "ok"
+            item["pipeline_status"] = "done"
             item["error_stage"] = ""
             item["error_code"] = ""
             item["error_message"] = ""

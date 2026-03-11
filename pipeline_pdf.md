@@ -305,7 +305,7 @@ Entrees:
 Sorties:
 - input/arks_numeros.json (mis a jour)
 - input/tableau_arks_numeros.csv (mis a jour)
-- data_process/state_pdf.json
+- manifest_iiif_process/state_pdf.json
 - pdf_process/... et images_process/...
 
 Sous-etapes detaillees:

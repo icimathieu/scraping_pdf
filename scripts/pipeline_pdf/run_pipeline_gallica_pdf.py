@@ -103,8 +103,23 @@ def merge_step1_items(
 
 
 def pdf_work_remaining(items: List[Dict[str, Any]]) -> int:
+    def has_pdf_signature(path: Path) -> bool:
+        try:
+            if not path.exists() or path.stat().st_size <= 0:
+                return False
+            with path.open("rb") as fh:
+                prefix = fh.read(64)
+            candidate = prefix.lstrip()
+            if candidate.startswith(b"\xef\xbb\xbf"):
+                candidate = candidate[3:]
+            return candidate.startswith(b"%PDF")
+        except OSError:
+            return False
+
     remaining = 0
     for item in items:
+        if str(item.get("pipeline_status", "")).strip() == "done":
+            continue
         issue_ark = str(item.get("issue_ark", "")).strip()
         if not issue_ark:
             continue
@@ -113,7 +128,7 @@ def pdf_work_remaining(items: List[Dict[str, Any]]) -> int:
             remaining += 1
             continue
         p = Path(pdf_path)
-        if not p.exists() or p.stat().st_size <= 0:
+        if not has_pdf_signature(p):
             remaining += 1
     return remaining
 
@@ -121,6 +136,8 @@ def pdf_work_remaining(items: List[Dict[str, Any]]) -> int:
 def images_work_remaining(items: List[Dict[str, Any]]) -> int:
     remaining = 0
     for item in items:
+        if str(item.get("pipeline_status", "")).strip() == "done":
+            continue
         issue_ark = str(item.get("issue_ark", "")).strip()
         if not issue_ark:
             continue
@@ -143,7 +160,7 @@ def main() -> None:
     parser.add_argument("--numeros-csv", default="input/tableau_arks_numeros.csv")
     parser.add_argument("--pdf-root", default="pdf_process")
     parser.add_argument("--image-root", default="images_process")
-    parser.add_argument("--state-file", default="data_process/state_pdf.json")
+    parser.add_argument("--state-file", default="manifest_iiif_process/state_pdf.json")
     parser.add_argument("--start-year", type=int, default=1870)
     parser.add_argument("--end-year", type=int, default=1914)
     parser.add_argument("--issues-rpm", type=int, default=10)
@@ -156,12 +173,18 @@ def main() -> None:
     parser.add_argument("--step3-cb-threshold", type=int, default=5)
     parser.add_argument("--step3-cb-sleep-seconds", type=int, default=600)
     parser.add_argument("--timeout-pdf", type=int, default=30)
+    parser.add_argument("--step2-progress-log-seconds", type=int, default=10)
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--bitonal-threshold", type=int, default=180)
     parser.add_argument("--image-format", choices=("png", "tiff"), default="tiff")
     parser.add_argument("--poppler-path", default="")
     parser.add_argument("--delete-pdf-after-success", action="store_true")
-    parser.add_argument("--user-agent", default="memoire-gallica-scraper/1.0 (+contact-local)")
+    parser.add_argument("--step2-cookies-file", default="gallica.bnf.fr_cookies.txt")
+    parser.add_argument("--step2-fail-fast-altcha", action="store_true")
+    parser.add_argument(
+        "--user-agent",
+        default="Mozilla/5.0 (Macintosh; Intel Mac OS X 14.0; rv:136.0) Gecko/20100101 Firefox/136.0",
+    )
     parser.add_argument("--python-bin", default=sys.executable)
     parser.add_argument("--force-step1", action="store_true")
     parser.add_argument("--force-pdf", action="store_true")
@@ -338,9 +361,15 @@ def main() -> None:
                 str(args.step2_cb_sleep_seconds),
                 "--timeout-seconds",
                 str(args.timeout_pdf),
+                "--progress-log-seconds",
+                str(args.step2_progress_log_seconds),
+                "--cookies-file",
+                str(args.step2_cookies_file),
                 "--user-agent",
                 args.user_agent,
             ]
+            if args.step2_fail_fast_altcha:
+                step2_cmd.append("--fail-fast-altcha")
             if args.force_pdf:
                 step2_cmd.append("--force")
             rc = stream_command("step2", step2_cmd, cwd)

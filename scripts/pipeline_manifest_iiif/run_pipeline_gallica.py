@@ -125,6 +125,8 @@ def build_manifest_path(item: Dict[str, Any], manifest_root: Path) -> Path:
 def manifest_work_remaining(items: List[Dict[str, Any]], manifest_root: Path) -> int:
     remaining = 0
     for item in items:
+        if str(item.get("pipeline_status", "")).strip() == "done":
+            continue
         issue_ark = str(item.get("issue_ark", "")).strip()
         if not issue_ark:
             continue
@@ -137,6 +139,8 @@ def manifest_work_remaining(items: List[Dict[str, Any]], manifest_root: Path) ->
 def images_work_remaining(items: List[Dict[str, Any]]) -> int:
     remaining = 0
     for item in items:
+        if str(item.get("pipeline_status", "")).strip() == "done":
+            continue
         issue_ark = str(item.get("issue_ark", "")).strip()
         if not issue_ark:
             continue
@@ -157,9 +161,9 @@ def main() -> None:
     parser.add_argument("--revues-input", default="input/arks_revues.json")
     parser.add_argument("--numeros-json", default="input/arks_numeros.json")
     parser.add_argument("--numeros-csv", default="input/tableau_arks_numeros.csv")
-    parser.add_argument("--manifest-root", default="data_process")
+    parser.add_argument("--manifest-root", default="manifest_iiif_process")
     parser.add_argument("--image-root", default="images_process")
-    parser.add_argument("--state-file", default="data_process/state.json")
+    parser.add_argument("--state-file", default="manifest_iiif_process/state.json")
     parser.add_argument("--start-year", type=int, default=1870)
     parser.add_argument("--end-year", type=int, default=1914)
     parser.add_argument("--issues-rpm", type=int, default=10)

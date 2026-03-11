@@ -5,7 +5,7 @@ env/
 
 # Data
 data/
-data_process/
+manifest_iiif_process/
 images_process/
 pdf_process/
 
@@ -26,8 +26,9 @@ __pycache__/
 *.pyc
 
 # Fichiers confidentiels
-cookies.txt
+gallica.bnf.fr_cookies.txt
 
 # Autres 
 note_memoire_scraping.md
 scripts/scraping_gallica_v1.py
+scripts/scraping_pdf_debug

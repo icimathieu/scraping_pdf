@@ -4371,7 +4371,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201100z.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1870001_bpt6k201100z/annee_scientifique_industrielle1870001_bpt6k201100z.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4384,7 +4386,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201101b.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1872001_bpt6k201101b/annee_scientifique_industrielle1872001_bpt6k201101b.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4397,7 +4401,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k203854x.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1874001_bpt6k203854x/annee_scientifique_industrielle1874001_bpt6k203854x.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4410,7 +4416,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201104g.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1875001_bpt6k201104g/annee_scientifique_industrielle1875001_bpt6k201104g.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4423,7 +4431,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201105v.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1876001_bpt6k201105v/annee_scientifique_industrielle1876001_bpt6k201105v.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4436,7 +4446,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2011067.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1877001_bpt6k2011067/annee_scientifique_industrielle1877001_bpt6k2011067.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4449,7 +4461,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201107m.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1878001_bpt6k201107m/annee_scientifique_industrielle1878001_bpt6k201107m.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4462,7 +4476,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2011080.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1879001_bpt6k2011080/annee_scientifique_industrielle1879001_bpt6k2011080.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4475,7 +4491,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201109c.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1880001_bpt6k201109c/annee_scientifique_industrielle1880001_bpt6k201109c.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4488,7 +4506,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2011109.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1881001_bpt6k2011109/annee_scientifique_industrielle1881001_bpt6k2011109.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4501,7 +4521,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201111p.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1882001_bpt6k201111p/annee_scientifique_industrielle1882001_bpt6k201111p.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4514,7 +4536,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2011122.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1883001_bpt6k2011122/annee_scientifique_industrielle1883001_bpt6k2011122.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4527,7 +4551,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201113f.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1884001_bpt6k201113f/annee_scientifique_industrielle1884001_bpt6k201113f.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4540,7 +4566,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201114t.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1885001_bpt6k201114t/annee_scientifique_industrielle1885001_bpt6k201114t.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4553,7 +4581,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2011156.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1886001_bpt6k2011156/annee_scientifique_industrielle1886001_bpt6k2011156.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4566,7 +4596,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201116k.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1887001_bpt6k201116k/annee_scientifique_industrielle1887001_bpt6k201116k.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4579,7 +4611,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201117z.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1888001_bpt6k201117z/annee_scientifique_industrielle1888001_bpt6k201117z.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4592,7 +4626,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201118b.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1889001_bpt6k201118b/annee_scientifique_industrielle1889001_bpt6k201118b.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4605,7 +4641,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201119q.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1890001_bpt6k201119q/annee_scientifique_industrielle1890001_bpt6k201119q.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4618,7 +4656,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201120n.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1891001_bpt6k201120n/annee_scientifique_industrielle1891001_bpt6k201120n.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4631,7 +4671,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2011211.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1892001_bpt6k2011211/annee_scientifique_industrielle1892001_bpt6k2011211.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4644,7 +4686,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201122d.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1893001_bpt6k201122d/annee_scientifique_industrielle1893001_bpt6k201122d.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4657,7 +4701,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201123s.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1894001_bpt6k201123s/annee_scientifique_industrielle1894001_bpt6k201123s.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4670,7 +4716,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2011245.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1895001_bpt6k2011245/annee_scientifique_industrielle1895001_bpt6k2011245.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4683,7 +4731,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201125j.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1896001_bpt6k201125j/annee_scientifique_industrielle1896001_bpt6k201125j.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4696,7 +4746,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201126x.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1897001_bpt6k201126x/annee_scientifique_industrielle1897001_bpt6k201126x.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4709,7 +4761,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2011292.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1901001_bpt6k2011292/annee_scientifique_industrielle1901001_bpt6k2011292.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4722,7 +4776,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2011300.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1904001_bpt6k2011300/annee_scientifique_industrielle1904001_bpt6k2011300.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4735,7 +4791,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k1104558.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1905001_bpt6k1104558/annee_scientifique_industrielle1905001_bpt6k1104558.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4748,7 +4806,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k1104482.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1906001_bpt6k1104482/annee_scientifique_industrielle1906001_bpt6k1104482.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4761,7 +4821,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201131c.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1907001_bpt6k201131c/annee_scientifique_industrielle1907001_bpt6k201131c.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4774,7 +4836,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k110449f.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1908001_bpt6k110449f/annee_scientifique_industrielle1908001_bpt6k110449f.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4787,7 +4851,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k110450c.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1909001_bpt6k110450c/annee_scientifique_industrielle1909001_bpt6k110450c.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4800,7 +4866,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k110451r.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1910001_bpt6k110451r/annee_scientifique_industrielle1910001_bpt6k110451r.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4813,7 +4881,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k110456n.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1911001_bpt6k110456n/annee_scientifique_industrielle1911001_bpt6k110456n.pdf"
     },
     {
       "revue": "annee_scientifique_industrielle",
@@ -4826,7 +4896,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k201132r.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/annee_scientifique_industrielle/annee_scientifique_industrielle1912001_bpt6k201132r/annee_scientifique_industrielle1912001_bpt6k201132r.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -4839,7 +4911,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151022.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1884001_bpt6k2151022/revue_scientifique1884001_bpt6k2151022.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -4852,7 +4926,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215103f.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1884183_bpt6k215103f/revue_scientifique1884183_bpt6k215103f.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -4865,7 +4941,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215104t.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1885001_bpt6k215104t/revue_scientifique1885001_bpt6k215104t.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -4878,7 +4956,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151056.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1885182_bpt6k2151056/revue_scientifique1885182_bpt6k2151056.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -4891,7 +4971,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215106k.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1886001_bpt6k215106k/revue_scientifique1886001_bpt6k215106k.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -4904,7 +4986,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215107z.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1886182_bpt6k215107z/revue_scientifique1886182_bpt6k215107z.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -4917,7 +5001,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215108b.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1887001_bpt6k215108b/revue_scientifique1887001_bpt6k215108b.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -4930,7 +5016,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215109q.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1887182_bpt6k215109q/revue_scientifique1887182_bpt6k215109q.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -4943,7 +5031,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215110n.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1888001_bpt6k215110n/revue_scientifique1888001_bpt6k215110n.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -4956,7 +5046,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151111.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1888183_bpt6k2151111/revue_scientifique1888183_bpt6k2151111.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -4969,7 +5061,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215272s.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1889001_bpt6k215272s/revue_scientifique1889001_bpt6k215272s.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -4982,7 +5076,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2152735.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1889182_bpt6k2152735/revue_scientifique1889182_bpt6k2152735.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -4995,7 +5091,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215112d.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1890001_bpt6k215112d/revue_scientifique1890001_bpt6k215112d.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5008,7 +5106,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215113s.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1890182_bpt6k215113s/revue_scientifique1890182_bpt6k215113s.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5021,7 +5121,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151145.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1891001_bpt6k2151145/revue_scientifique1891001_bpt6k2151145.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5034,7 +5136,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215115j.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1891182_bpt6k215115j/revue_scientifique1891182_bpt6k215115j.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5047,7 +5151,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215116x.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1892001_bpt6k215116x/revue_scientifique1892001_bpt6k215116x.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5060,7 +5166,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151179.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1892183_bpt6k2151179/revue_scientifique1892183_bpt6k2151179.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5073,7 +5181,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215118p.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1893001_bpt6k215118p/revue_scientifique1893001_bpt6k215118p.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5086,7 +5196,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151192.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1893182_bpt6k2151192/revue_scientifique1893182_bpt6k2151192.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5099,7 +5211,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151200.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1894001_bpt6k2151200/revue_scientifique1894001_bpt6k2151200.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5112,7 +5226,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215121c.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1894182_bpt6k215121c/revue_scientifique1894182_bpt6k215121c.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5125,7 +5241,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215122r.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1895001_bpt6k215122r/revue_scientifique1895001_bpt6k215122r.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5138,7 +5256,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151234.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1895182_bpt6k2151234/revue_scientifique1895182_bpt6k2151234.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5151,7 +5271,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215124h.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1896001_bpt6k215124h/revue_scientifique1896001_bpt6k215124h.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5164,7 +5286,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215125w.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1896183_bpt6k215125w/revue_scientifique1896183_bpt6k215125w.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5177,7 +5301,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151268.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1897001_bpt6k2151268/revue_scientifique1897001_bpt6k2151268.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5190,7 +5316,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215127n.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1897182_bpt6k215127n/revue_scientifique1897182_bpt6k215127n.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5203,7 +5331,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151281.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1898001_bpt6k2151281/revue_scientifique1898001_bpt6k2151281.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5216,7 +5346,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215129d.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1898182_bpt6k215129d/revue_scientifique1898182_bpt6k215129d.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5229,7 +5361,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215131q.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1899001_bpt6k215131q/revue_scientifique1899001_bpt6k215131q.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5242,7 +5376,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215130b.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1899182_bpt6k215130b/revue_scientifique1899182_bpt6k215130b.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5255,7 +5391,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151323.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1900001_bpt6k2151323/revue_scientifique1900001_bpt6k2151323.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5268,7 +5406,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215133g.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1900182_bpt6k215133g/revue_scientifique1900182_bpt6k215133g.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5281,7 +5421,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215134v.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1901001_bpt6k215134v/revue_scientifique1901001_bpt6k215134v.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5294,7 +5436,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151357.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1901182_bpt6k2151357/revue_scientifique1901182_bpt6k2151357.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5307,7 +5451,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215136m.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1902001_bpt6k215136m/revue_scientifique1902001_bpt6k215136m.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5320,7 +5466,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151370.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1902182_bpt6k2151370/revue_scientifique1902182_bpt6k2151370.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5333,7 +5481,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215138c.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1903001_bpt6k215138c/revue_scientifique1903001_bpt6k215138c.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5346,7 +5496,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215139r.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1903182_bpt6k215139r/revue_scientifique1903182_bpt6k215139r.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5359,7 +5511,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215140p.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1904001_bpt6k215140p/revue_scientifique1904001_bpt6k215140p.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5372,7 +5526,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151412.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1904183_bpt6k2151412/revue_scientifique1904183_bpt6k2151412.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5385,7 +5541,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215142f.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1905001_bpt6k215142f/revue_scientifique1905001_bpt6k215142f.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5398,7 +5556,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215143t.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1905182_bpt6k215143t/revue_scientifique1905182_bpt6k215143t.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5411,7 +5571,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151446.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1906001_bpt6k2151446/revue_scientifique1906001_bpt6k2151446.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5424,7 +5586,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215145k.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1906182_bpt6k215145k/revue_scientifique1906182_bpt6k215145k.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5437,7 +5601,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215146z.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1907001_bpt6k215146z/revue_scientifique1907001_bpt6k215146z.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5450,7 +5616,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215147b.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1907182_bpt6k215147b/revue_scientifique1907182_bpt6k215147b.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5463,7 +5631,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k6564994g.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1908001_bpt6k6564994g/revue_scientifique1908001_bpt6k6564994g.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5476,7 +5646,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151493.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1908183_bpt6k2151493/revue_scientifique1908183_bpt6k2151493.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5489,7 +5661,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151501.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1909001_bpt6k2151501/revue_scientifique1909001_bpt6k2151501.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5502,7 +5676,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215151d.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1909182_bpt6k215151d/revue_scientifique1909182_bpt6k215151d.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5515,7 +5691,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215152s.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1910001_bpt6k215152s/revue_scientifique1910001_bpt6k215152s.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5528,7 +5706,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151535.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1910182_bpt6k2151535/revue_scientifique1910182_bpt6k2151535.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5541,7 +5721,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215154j.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1911001_bpt6k215154j/revue_scientifique1911001_bpt6k215154j.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5554,7 +5736,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215155x.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1911182_bpt6k215155x/revue_scientifique1911182_bpt6k215155x.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5567,7 +5751,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151569.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1912001_bpt6k2151569/revue_scientifique1912001_bpt6k2151569.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5580,7 +5766,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215157p.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1912183_bpt6k215157p/revue_scientifique1912183_bpt6k215157p.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5593,7 +5781,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k2151582.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1913001_bpt6k2151582/revue_scientifique1913001_bpt6k2151582.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5606,7 +5796,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215159f.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1913182_bpt6k215159f/revue_scientifique1913182_bpt6k215159f.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5619,7 +5811,9 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215160c.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1914001_bpt6k215160c/revue_scientifique1914001_bpt6k215160c.pdf"
     },
     {
       "revue": "revue_scientifique",
@@ -5632,9 +5826,19 @@
       "status": "ok",
       "error_stage": "",
       "error_code": "",
-      "error_message": ""
+      "error_message": "",
+      "pdf_url": "https://gallica.bnf.fr/ark:/12148/bpt6k215161r.pdf",
+      "pdf_path": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process/revue_scientifique/revue_scientifique1914182_bpt6k215161r/revue_scientifique1914182_bpt6k215161r.pdf"
     }
   ],
-  "total_errors": 0,
-  "total_events": 433
+  "total_errors": 1,
+  "total_events": 433,
+  "pdf_collection": {
+    "requests_per_minute": 1,
+    "pdf_root": "/Users/mathieu/Documents/memoire/code_memoire/scraping_pdf/pdf_process",
+    "downloaded": 0,
+    "existing": 0,
+    "errors": 1,
+    "skipped_prior_error": 0
+  }
 }
