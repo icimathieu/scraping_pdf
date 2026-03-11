@@ -170,6 +170,7 @@ def save_csv(path: Path, items: List[Dict[str, Any]]) -> None:
         "manifest_url",
         "manifest_path",
         "status",
+        "pipeline_status",
         "error_stage",
         "error_code",
         "error_message",
@@ -203,7 +204,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--manifest-root",
-        default="data_process",
+        default="manifest_iiif_process",
         help="Dossier racine de sauvegarde des manifests par revue.",
     )
     parser.add_argument(
@@ -264,6 +265,7 @@ def main() -> None:
 
         if not numero_id or not issue_ark_raw:
             item["status"] = "error"
+            item["pipeline_status"] = "error"
             item["error_stage"] = "manifest_input_validation"
             item["error_code"] = "missing_required_fields"
             item["error_message"] = "numero_id ou issue_ark manquant"
@@ -278,6 +280,7 @@ def main() -> None:
             issue_ark = normalize_issue_ark(issue_ark_raw)
         except ValueError as exc:
             item["status"] = "error"
+            item["pipeline_status"] = "error"
             item["error_stage"] = "manifest_normalization"
             item["error_code"] = error_code_from_exception(exc)
             item["error_message"] = str(exc)
@@ -295,6 +298,7 @@ def main() -> None:
 
         if manifest_path.exists() and not args.force:
             item["status"] = "ok"
+            item["pipeline_status"] = ""
             item["error_stage"] = ""
             item["error_code"] = ""
             item["error_message"] = ""
@@ -309,6 +313,7 @@ def main() -> None:
             circuit_breaker.record_success()
             save_manifest(manifest_path, manifest)
             item["status"] = "ok"
+            item["pipeline_status"] = ""
             item["error_stage"] = ""
             item["error_code"] = ""
             item["error_message"] = ""
@@ -318,6 +323,7 @@ def main() -> None:
                 exc, context=f"revue={item.get('revue','')} numero_id={numero_id}"
             )
             item["status"] = "error"
+            item["pipeline_status"] = "error"
             item["error_stage"] = "manifest_download"
             item["error_code"] = error_code_from_exception(exc)
             item["error_message"] = str(exc)

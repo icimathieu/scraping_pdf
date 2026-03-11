@@ -133,7 +133,7 @@ Sorties:
 - JSON enrichi: input/arks_numeros.json
 - CSV enrichi:  input/tableau_arks_numeros.csv
 - Manifests sur disque:
-  - data_process/<revue>/<numero_id>.manifest.json
+  - manifest_iiif_process/<revue>/<numero_id>.manifest.json
 
 Sous-etapes detaillees:
 1. Chargement de la configuration CLI.
@@ -141,7 +141,7 @@ Sous-etapes detaillees:
      - --input (defaut: input/arks_numeros.json)
      - --output (defaut: input/arks_numeros.json)
      - --output-csv (defaut: input/tableau_arks_numeros.csv)
-     - --manifest-root (defaut: data_process)
+     - --manifest-root (defaut: manifest_iiif_process)
      - --requests-per-minute (defaut: 5)
      - --timeout-seconds (defaut: 15)
      - --user-agent
@@ -164,7 +164,7 @@ Sous-etapes detaillees:
    - URL:
      - https://gallica.bnf.fr/iiif/<issue_ark>/manifest.json
    - Chemin local:
-     - data_process/<revue_sanitized>/<numero_id_sanitized>.manifest.json
+     - manifest_iiif_process/<revue_sanitized>/<numero_id_sanitized>.manifest.json
    - Ajout immediat dans item:
      - manifest_url
      - manifest_path
@@ -195,7 +195,7 @@ Sous-etapes detaillees:
      - revue,parent_ark_date,year,day_of_year,numero_id,issue_ark,precision,manifest_url,manifest_path,status,error_stage,error_code,error_message
 
 Commande d'execution type:
-- .venv/bin/python -u scripts/scraping_manifest_gallica.py --input input/arks_numeros.json --output input/arks_numeros.json --output-csv input/tableau_arks_numeros.csv --manifest-root data_process
+- .venv/bin/python -u scripts/scraping_manifest_gallica.py --input input/arks_numeros.json --output input/arks_numeros.json --output-csv input/tableau_arks_numeros.csv --manifest-root manifest_iiif_process
 
 
 ETAPE 3 - manifest IIIF -> images bitonales full (deja codee)
@@ -219,7 +219,7 @@ Sous-etapes detaillees:
 1. Chargement de la configuration CLI.
    - Parametres principaux:
      - --input, --output, --output-csv
-     - --manifest-root (defaut: data_process)
+     - --manifest-root (defaut: manifest_iiif_process)
      - --image-root (defaut: images_process)
      - --requests-per-minute (defaut: 5)
      - --timeout-seconds
@@ -283,15 +283,15 @@ Entrees principales:
 - input/tableau_arks_numeros.csv
 
 Sorties principales:
-- data_process/state.json
+- manifest_iiif_process/state.json
 - input/arks_numeros.json (mis a jour a chaque etape)
 - input/tableau_arks_numeros.csv (mis a jour a chaque etape)
-- data_process/<revue>/<numero_id>.manifest.json
+- manifest_iiif_process/<revue>/<numero_id>.manifest.json
 - images_process/<revue>/<numero_id>/page_XXXX.jpg
 
 Sous-etapes detaillees:
 1. Charger l'etat de pipeline.
-   - Lecture de data_process/state.json.
+   - Lecture de manifest_iiif_process/state.json.
    - Initialisation si absent:
      - revues {}
      - runs []
@@ -357,7 +357,7 @@ Parametres CLI utiles de l'orchestrateur:
 - --disable-step1 / --disable-step2 / --disable-step3
 
 Commande d'execution type:
-- .venv/bin/python -u scripts/run_pipeline_gallica.py --revues-input input/arks_revues.json --numeros-json input/arks_numeros.json --numeros-csv input/tableau_arks_numeros.csv --manifest-root data_process --image-root images_process
+- .venv/bin/python -u scripts/run_pipeline_gallica.py --revues-input input/arks_revues.json --numeros-json input/arks_numeros.json --numeros-csv input/tableau_arks_numeros.csv --manifest-root manifest_iiif_process --image-root images_process
 
 
 Notes transverses

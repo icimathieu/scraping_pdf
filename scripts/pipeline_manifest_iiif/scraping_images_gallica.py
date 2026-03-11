@@ -146,6 +146,7 @@ def save_csv(path: Path, items: List[Dict[str, Any]]) -> None:
         "images_existing",
         "images_errors",
         "status",
+        "pipeline_status",
         "error_stage",
         "error_code",
         "error_message",
@@ -233,7 +234,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--manifest-root",
-        default="data_process",
+        default="manifest_iiif_process",
         help="Racine des manifests si manifest_path n'est pas renseigne.",
     )
     parser.add_argument(
@@ -288,6 +289,7 @@ def main() -> None:
         if str(item.get("status", "")).strip() == "error" and not str(
             item.get("issue_ark", "")
         ).strip():
+            item["pipeline_status"] = "error"
             print(
                 f"[ERROR][step3][skip_prior_error][{item.get('revue','')}][{item.get('numero_id','')}] "
                 f"{item.get('error_stage','')} {item.get('error_code','')} {item.get('error_message','')}"
@@ -301,6 +303,7 @@ def main() -> None:
 
         if not numero_id_raw:
             item["status"] = "error"
+            item["pipeline_status"] = "error"
             item["error_stage"] = "images_input_validation"
             item["error_code"] = "missing_numero_id"
             item["error_message"] = "numero_id manquant"
@@ -319,6 +322,7 @@ def main() -> None:
         item["manifest_path"] = manifest_path.as_posix()
         if not manifest_path.exists():
             item["status"] = "error"
+            item["pipeline_status"] = "error"
             item["error_stage"] = "images_manifest_path"
             item["error_code"] = "manifest_not_found"
             item["error_message"] = f"Manifest introuvable: {manifest_path}"
@@ -338,6 +342,7 @@ def main() -> None:
                 manifest = json.load(fh)
         except Exception as exc:
             item["status"] = "error"
+            item["pipeline_status"] = "error"
             item["error_stage"] = "images_manifest_load"
             item["error_code"] = error_code_from_exception(exc)
             item["error_message"] = str(exc)
@@ -355,6 +360,7 @@ def main() -> None:
         sequences = manifest.get("sequences") or []
         if not sequences or not isinstance(sequences, list):
             item["status"] = "error"
+            item["pipeline_status"] = "error"
             item["error_stage"] = "images_manifest_parse"
             item["error_code"] = "missing_sequences"
             item["error_message"] = "Manifest sans sequences."
@@ -411,6 +417,7 @@ def main() -> None:
 
         if errors > 0:
             item["status"] = "error"
+            item["pipeline_status"] = "error"
             item["error_stage"] = "image_download"
             item["error_code"] = first_error[0] if first_error else "unknown_error"
             item["error_message"] = first_error[1] if first_error else "Erreur image non detaillee"
@@ -421,6 +428,7 @@ def main() -> None:
             processed_error += 1
         else:
             item["status"] = "ok"
+            item["pipeline_status"] = "done"
             item["error_stage"] = ""
             item["error_code"] = ""
             item["error_message"] = ""
