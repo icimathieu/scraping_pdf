@@ -176,7 +176,7 @@ def main() -> None:
     parser.add_argument("--step2-progress-log-seconds", type=int, default=10)
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--bitonal-threshold", type=int, default=180)
-    parser.add_argument("--image-format", choices=("png", "tiff"), default="tiff")
+    parser.add_argument("--image-format", choices=("png", "tiff"), default="png")
     parser.add_argument("--poppler-path", default="")
     parser.add_argument("--delete-pdf-after-success", action="store_true")
     parser.add_argument("--step2-cookies-file", default="gallica.bnf.fr_cookies.txt")
