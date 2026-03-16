@@ -18,6 +18,10 @@ ARK_PATTERN = re.compile(r"(ark:/12148/[a-z0-9]+)", re.IGNORECASE)
 DATE_PATTERN = re.compile(r"(\d{4})/(\d{2})/(\d{2})")
 
 
+class ThrottleStopError(RuntimeError):
+    """Raised when repeated 429s indicate the script should stop entirely."""
+
+
 class RateLimiter:
     def __init__(self, requests_per_minute: int) -> None:
         self.requests_per_minute = max(1, requests_per_minute)
@@ -39,10 +43,12 @@ class RateLimiter:
 
 
 class CircuitBreaker429:
-    def __init__(self, threshold: int, sleep_seconds: int) -> None:
+    def __init__(self, threshold: int, sleep_seconds: int, max_cooldowns: int) -> None:
         self.threshold = max(1, threshold)
         self.sleep_seconds = max(1, sleep_seconds)
+        self.max_cooldowns = max(1, max_cooldowns)
         self.consecutive_429 = 0
+        self.cooldowns_used = 0
 
     @staticmethod
     def is_429_exception(exc: Exception) -> bool:
@@ -69,10 +75,15 @@ class CircuitBreaker429:
             f"context={context}"
         )
         if self.consecutive_429 >= self.threshold:
+            if self.cooldowns_used >= self.max_cooldowns:
+                raise ThrottleStopError(
+                    "throttle_stop: trop de 429 consecutifs malgre les cooldowns; arret definitif"
+                )
             print(
                 f"[WARN][circuit_breaker] Sleeping {self.sleep_seconds}s after {self.consecutive_429} consecutive 429"
             )
             time.sleep(self.sleep_seconds)
+            self.cooldowns_used += 1
             self.consecutive_429 = 0
 
 
@@ -254,7 +265,7 @@ def main() -> None:
     )
     parser.add_argument("--start-year", type=int, default=1870)
     parser.add_argument("--end-year", type=int, default=1914)
-    parser.add_argument("--requests-per-minute", type=int, default=10)
+    parser.add_argument("--requests-per-minute", type=int, default=5)
     parser.add_argument(
         "--user-agent",
         default="memoire-gallica-scraper/1.0 (+contact-local)",
@@ -262,6 +273,7 @@ def main() -> None:
     )
     parser.add_argument("--cb-threshold", type=int, default=5)
     parser.add_argument("--cb-sleep-seconds", type=int, default=600)
+    parser.add_argument("--cb-max-cooldowns", type=int, default=1)
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -271,7 +283,11 @@ def main() -> None:
     revues = load_revues(input_path)
     session = build_session(args.user_agent)
     limiter = RateLimiter(args.requests_per_minute)
-    circuit_breaker = CircuitBreaker429(args.cb_threshold, args.cb_sleep_seconds)
+    circuit_breaker = CircuitBreaker429(
+        args.cb_threshold,
+        args.cb_sleep_seconds,
+        args.cb_max_cooldowns,
+    )
 
     rows: List[dict] = []
 
@@ -302,6 +318,8 @@ def main() -> None:
             print(
                 f"  {len(years)} années retenues entre {args.start_year} et {args.end_year}"
             )
+        except ThrottleStopError:
+            raise
         except Exception as exc:
             print(f"[ERROR][step1][years][{revue_name}] {exc}")
             rows.append(
@@ -323,6 +341,8 @@ def main() -> None:
                     parent_ark_date,
                     year=year,
                 )
+            except ThrottleStopError:
+                raise
             except Exception as exc:
                 print(f"[ERROR][step1][issues_by_year][{revue_name}][{year}] {exc}")
                 rows.append(

@@ -30,10 +30,11 @@ Sous-etapes detaillees:
      - --output-csv (defaut: input/tableau_arks_numeros.csv)
      - --start-year (defaut: 1870)
      - --end-year (defaut: 1914)
-     - --requests-per-minute (defaut: 10)
+     - --requests-per-minute (defaut: 5)
      - --user-agent (defaut: memoire-gallica-scraper/1.0 (+contact-local))
      - --cb-threshold (defaut: 5)
      - --cb-sleep-seconds (defaut: 600)
+     - --cb-max-cooldowns (defaut: 1)
 
 2. Chargement du fichier revues.
    - Lecture JSON avec json.load.
@@ -126,7 +127,7 @@ Commande d'execution type:
 ETAPE 2 - ARK de numero -> PDF Gallica (deja codee)
 ----------------------------------------------------
 Script de reference:
-- scripts/pipeline_pdf/scraping_pdf.py
+- scripts/pipeline_pdf/selenium_scraping_pdf.py
 
 Entree:
 - input/arks_numeros.json (structure avec items[])
@@ -135,7 +136,7 @@ Sorties:
 - JSON enrichi: input/arks_numeros.json
 - CSV enrichi:  input/tableau_arks_numeros.csv
 - PDFs sur disque:
-  - pdf_process/<numero_id>/<numero_id>.pdf
+  - pdf_process/<revue>/<numero_id>/<numero_id>.pdf
 
 Sous-etapes detaillees:
 1. Chargement de la configuration CLI.
@@ -144,20 +145,25 @@ Sous-etapes detaillees:
      - --output (defaut: input/arks_numeros.json)
      - --output-csv (defaut: input/tableau_arks_numeros.csv)
      - --pdf-root (defaut: pdf_process)
-     - --requests-per-minute (defaut: 1)
-     - --timeout-seconds (defaut: 30)
+     - --requests-per-minute (defaut: 0.5)
+     - --page-timeout-seconds (defaut: 60)
+     - --timeout-seconds (defaut: 600) [timeout de telechargement]
      - --user-agent
      - --cb-threshold (defaut: 5)
      - --cb-sleep-seconds (defaut: 600)
+     - --cb-max-cooldowns (defaut: 1)
+     - --show-browser (headless actif par defaut)
      - --force (re-telechargement des PDF existants)
 
 2. Chargement du JSON d'entree et resolution de items[].
    - Lecture du payload JSON.
    - Verification de la presence de items[].
 
-3. Initialisation HTTP robuste.
-   - requests.Session + retry sur 429/5xx.
-   - Rate limiter local (fenetre glissante 60s) a 1 req/min par defaut.
+3. Initialisation Selenium robuste.
+   - Lancement de Firefox via geckodriver.
+   - Headless actif par defaut.
+   - Possibilite de charger des cookies Firefox.
+   - Rate limiter local avec intervalle minimal, inferieur a 1 req/min par defaut.
 
 4. Iteration sur chaque item.
    - Lecture de numero_id, issue_ark, revue.
@@ -180,15 +186,18 @@ Sous-etapes detaillees:
 
 7. Telechargement du PDF si necessaire.
    - Attente rate limiter.
-   - GET du PDF avec timeout.
-   - raise_for_status puis ecriture binaire sur disque.
+   - Ouverture de l'URL PDF dans Firefox/Selenium.
+   - Optionnellement: clic robuste sur un element HTML si un selecteur est configure.
+   - Attente de l'apparition du fichier dans un dossier de telechargement Selenium.
+   - Validation de la signature PDF et de l'absence de page HTML/ALTCHA/429.
+   - Deplacement du fichier vers le chemin final.
    - Mise a jour item:
      - pdf_size_bytes
      - status = "ok"
    - En cas d'erreur:
      - status = "error"
-     - error_stage = "pdf_download" (ou stage pdf_*)
-     - error_code = code structure (ex: 429, timeout, retry_error)
+      - error_stage = "pdf_download" (ou stage pdf_*)
+     - error_code = code structure (ex: 429, timeout, captcha_required, webdriver_error)
      - error_message = message erreur.
 
 8. Ecriture des sorties enrichies.
@@ -199,7 +208,7 @@ Sous-etapes detaillees:
      - revue,parent_ark_date,year,day_of_year,numero_id,issue_ark,precision,pdf_url,pdf_path,pdf_size_bytes,status,error_stage,error_code,error_message
 
 Commande d'execution type:
-- .venv/bin/python -u scripts/pipeline_pdf/scraping_pdf.py --input input/arks_numeros.json --output input/arks_numeros.json --output-csv input/tableau_arks_numeros.csv --pdf-root pdf_process
+- .venv/bin/python -u scripts/pipeline_pdf/selenium_scraping_pdf.py --input input/arks_numeros.json --output input/arks_numeros.json --output-csv input/tableau_arks_numeros.csv --pdf-root pdf_process
 
 
 ETAPE 3 - PDF -> images bitonales (deja codee)
@@ -225,7 +234,7 @@ Sous-etapes detaillees:
      - --input, --output, --output-csv
      - --pdf-root (defaut: pdf_process)
      - --image-root (defaut: images_process)
-     - --requests-per-minute (defaut: 120) [throttling local de conversion]
+     - --requests-per-minute (defaut: 30) [throttling local de conversion]
      - --cb-threshold (defaut: 5)
      - --cb-sleep-seconds (defaut: 600)
      - --dpi (defaut: 200)
@@ -329,7 +338,7 @@ Sous-etapes detaillees:
      - fichier absent,
      - fichier vide,
      - ou --force-pdf.
-   - Lance scraping_pdf.py avec les parametres rpm/circuit-breaker/timeouts.
+   - Lance selenium_scraping_pdf.py avec les parametres rpm/circuit-breaker/timeouts.
 
 4. Etape 3 conditionnelle (images).
    - Detecte les items restants:
@@ -345,9 +354,13 @@ Sous-etapes detaillees:
    - Sauvegarde state_pdf.json.
 
 Configuration CLI principale:
-- --issues-rpm (defaut: 10)
-- --pdf-rpm (defaut: 1)
-- --image-rpm (defaut: 120)
+- --issues-rpm (defaut: 5)
+- --pdf-rpm (defaut: 0.5)
+- --image-rpm (defaut: 30)
+- --step1-cb-max-cooldowns (defaut: 1)
+- --step2-cb-max-cooldowns (defaut: 1)
+- --step2-page-timeout-seconds (defaut: 60)
+- --timeout-pdf (defaut: 600)
 - --step1-cb-threshold / --step1-cb-sleep-seconds (5 / 600)
 - --step2-cb-threshold / --step2-cb-sleep-seconds (5 / 600)
 - --step3-cb-threshold / --step3-cb-sleep-seconds (5 / 600)
