@@ -163,24 +163,28 @@ def main() -> None:
     parser.add_argument("--state-file", default="manifest_iiif_process/state_pdf.json")
     parser.add_argument("--start-year", type=int, default=1870)
     parser.add_argument("--end-year", type=int, default=1914)
-    parser.add_argument("--issues-rpm", type=int, default=10)
-    parser.add_argument("--pdf-rpm", type=int, default=1)
-    parser.add_argument("--image-rpm", type=int, default=120)
+    parser.add_argument("--issues-rpm", type=int, default=5)
+    parser.add_argument("--pdf-rpm", type=float, default=0.5)
+    parser.add_argument("--image-rpm", type=int, default=30)
     parser.add_argument("--step1-cb-threshold", type=int, default=5)
     parser.add_argument("--step1-cb-sleep-seconds", type=int, default=600)
+    parser.add_argument("--step1-cb-max-cooldowns", type=int, default=1)
     parser.add_argument("--step2-cb-threshold", type=int, default=5)
     parser.add_argument("--step2-cb-sleep-seconds", type=int, default=600)
+    parser.add_argument("--step2-cb-max-cooldowns", type=int, default=1)
     parser.add_argument("--step3-cb-threshold", type=int, default=5)
     parser.add_argument("--step3-cb-sleep-seconds", type=int, default=600)
-    parser.add_argument("--timeout-pdf", type=int, default=30)
+    parser.add_argument("--step2-page-timeout-seconds", type=int, default=60)
+    parser.add_argument("--timeout-pdf", type=int, default=600)
     parser.add_argument("--step2-progress-log-seconds", type=int, default=10)
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--bitonal-threshold", type=int, default=180)
     parser.add_argument("--image-format", choices=("png", "tiff"), default="png")
     parser.add_argument("--poppler-path", default="")
     parser.add_argument("--delete-pdf-after-success", action="store_true")
-    parser.add_argument("--step2-cookies-file", default="gallica.bnf.fr_cookies.txt")
+    parser.add_argument("--step2-cookies-file", default="")
     parser.add_argument("--step2-fail-fast-altcha", action="store_true")
+    parser.add_argument("--show-browser", action="store_true")
     parser.add_argument(
         "--user-agent",
         default="Mozilla/5.0 (Macintosh; Intel Mac OS X 14.0; rv:136.0) Gecko/20100101 Firefox/136.0",
@@ -206,7 +210,7 @@ def main() -> None:
     state_file = resolve_path(args.state_file, project_root)
 
     step1_script = script_dir / "scraping_arks_numeros_gallica_pdf.py"
-    step2_script = script_dir / "scraping_pdf.py"
+    step2_script = script_dir / "selenium_scraping_pdf.py"
     step3_script = script_dir / "scraping_pdf_to_images.py"
 
     tmp_dir = state_file.parent / "_tmp_pdf"
@@ -275,6 +279,8 @@ def main() -> None:
                 str(args.step1_cb_threshold),
                 "--cb-sleep-seconds",
                 str(args.step1_cb_sleep_seconds),
+                "--cb-max-cooldowns",
+                str(args.step1_cb_max_cooldowns),
                 "--user-agent",
                 args.user_agent,
             ]
@@ -359,6 +365,10 @@ def main() -> None:
                 str(args.step2_cb_threshold),
                 "--cb-sleep-seconds",
                 str(args.step2_cb_sleep_seconds),
+                "--cb-max-cooldowns",
+                str(args.step2_cb_max_cooldowns),
+                "--page-timeout-seconds",
+                str(args.step2_page_timeout_seconds),
                 "--timeout-seconds",
                 str(args.timeout_pdf),
                 "--progress-log-seconds",
@@ -368,6 +378,8 @@ def main() -> None:
                 "--user-agent",
                 args.user_agent,
             ]
+            if args.show_browser:
+                step2_cmd.append("--show-browser")
             if args.step2_fail_fast_altcha:
                 step2_cmd.append("--fail-fast-altcha")
             if args.force_pdf:
