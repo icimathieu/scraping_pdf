@@ -1,4 +1,5 @@
 import argparse
+import csv
 import json
 import subprocess
 import sys
@@ -22,6 +23,58 @@ def save_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2)
+
+
+def save_payload_csv(path: Path, payload: Dict[str, Any]) -> None:
+    items = payload.get("items", [])
+    if not isinstance(items, list):
+        items = []
+
+    preferred = [
+        "revue",
+        "parent_ark_date",
+        "year",
+        "day_of_year",
+        "numero_id",
+        "issue_ark",
+        "precision",
+        "status",
+        "pipeline_status",
+        "error_stage",
+        "error_code",
+        "error_message",
+        "pdf_url",
+        "pdf_path",
+        "pdf_size_bytes",
+        "pdf_deleted",
+        "images_total",
+        "images_existing",
+        "images_converted",
+        "images_errors",
+        "image_format",
+        "dpi",
+        "bitonal_threshold",
+        "image_dir",
+    ]
+    extra = sorted(
+        {
+            key
+            for item in items
+            if isinstance(item, dict)
+            for key in item.keys()
+            if key not in preferred
+        }
+    )
+    fieldnames = preferred + extra
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            writer.writerow({name: item.get(name, "") for name in fieldnames})
 
 
 def parse_int(value: Any, default: int = 0) -> int:
@@ -102,6 +155,49 @@ def merge_step1_items(
     return current_payload
 
 
+def bootstrap_step1_state_from_numeros(
+    state: Dict[str, Any],
+    revues: Dict[str, str],
+    numeros_payload: Dict[str, Any],
+    start_year: int,
+    end_year: int,
+) -> int:
+    period = numeros_payload.get("period", {})
+    if not isinstance(period, dict):
+        return 0
+    payload_start = parse_int(period.get("start_year"), default=-1)
+    payload_end = parse_int(period.get("end_year"), default=-1)
+    if payload_start != start_year or payload_end != end_year:
+        return 0
+
+    items = numeros_payload.get("items", [])
+    if not isinstance(items, list):
+        return 0
+
+    revues_with_issues = {
+        str(item.get("revue", "")).strip()
+        for item in items
+        if str(item.get("revue", "")).strip()
+        and str(item.get("issue_ark", "")).strip()
+    }
+
+    bootstrapped = 0
+    for revue_name, ark_value in revues.items():
+        if revue_name in state.get("revues", {}):
+            continue
+        if revue_name not in revues_with_issues:
+            continue
+        state["revues"][revue_name] = {
+            "status": "done",
+            "ark": str(ark_value),
+            "updated_at": now_iso(),
+            "last_error": "",
+            "source": "bootstrap_from_arks_numeros",
+        }
+        bootstrapped += 1
+    return bootstrapped
+
+
 def pdf_work_remaining(items: List[Dict[str, Any]]) -> int:
     def has_pdf_signature(path: Path) -> bool:
         try:
@@ -160,7 +256,7 @@ def main() -> None:
     parser.add_argument("--numeros-csv", default="input/tableau_arks_numeros.csv")
     parser.add_argument("--pdf-root", default="pdf_process")
     parser.add_argument("--image-root", default="images_process")
-    parser.add_argument("--state-file", default="manifest_iiif_process/state_pdf.json")
+    parser.add_argument("--state-file", default="input/state_step1_revues.json")
     parser.add_argument("--start-year", type=int, default=1870)
     parser.add_argument("--end-year", type=int, default=1914)
     parser.add_argument("--issues-rpm", type=int, default=5)
@@ -226,6 +322,22 @@ def main() -> None:
     state.setdefault("revues", {})
     state.setdefault("runs", [])
 
+    numeros_existing = load_json(numeros_json, default={"items": []})
+    if not isinstance(numeros_existing, dict):
+        numeros_existing = {"items": []}
+    bootstrapped = bootstrap_step1_state_from_numeros(
+        state=state,
+        revues=revues,
+        numeros_payload=numeros_existing,
+        start_year=args.start_year,
+        end_year=args.end_year,
+    )
+    if bootstrapped > 0:
+        print(
+            f"[INFO][step1] Bootstrap state: {bootstrapped} revue(s) marquée(s) done depuis {numeros_json}"
+        )
+        save_json(state_file, state)
+
     run_meta = {
         "started_at": now_iso(),
         "status": "running",
@@ -255,57 +367,77 @@ def main() -> None:
             print("[INFO][step1] Aucun nouveau titre a traiter.")
         else:
             print(f"[INFO][step1] Revues a traiter: {len(pending_revues)}")
-            tmp_step1_input = tmp_dir / "step1_pending_revues.json"
-            tmp_step1_json = tmp_dir / "step1_output.json"
-            tmp_step1_csv = tmp_dir / "step1_output.csv"
-            save_json(tmp_step1_input, pending_revues)
+            step1_has_error = False
+            run_meta["step1_rc"] = 0
+            total_pending = len(pending_revues)
 
-            step1_cmd = [
-                args.python_bin,
-                str(step1_script),
-                "--input",
-                str(tmp_step1_input),
-                "--output-json",
-                str(tmp_step1_json),
-                "--output-csv",
-                str(tmp_step1_csv),
-                "--start-year",
-                str(args.start_year),
-                "--end-year",
-                str(args.end_year),
-                "--requests-per-minute",
-                str(args.issues_rpm),
-                "--cb-threshold",
-                str(args.step1_cb_threshold),
-                "--cb-sleep-seconds",
-                str(args.step1_cb_sleep_seconds),
-                "--cb-max-cooldowns",
-                str(args.step1_cb_max_cooldowns),
-                "--user-agent",
-                args.user_agent,
-            ]
-            rc = stream_command("step1", step1_cmd, cwd)
-            run_meta["step1_rc"] = rc
+            for idx, (revue_name, ark_value) in enumerate(pending_revues.items(), start=1):
+                print(f"[INFO][step1] Traitement revue {idx}/{total_pending}: {revue_name}")
+                tmp_step1_input = tmp_dir / f"step1_pending_{idx}.json"
+                tmp_step1_json = tmp_dir / f"step1_output_{idx}.json"
+                tmp_step1_csv = tmp_dir / f"step1_output_{idx}.csv"
 
-            step1_payload = load_json(tmp_step1_json, default={"items": []})
-            current_payload = load_json(numeros_json, default={"items": []})
-            if not isinstance(current_payload, dict):
-                current_payload = {"items": []}
-            merged = merge_step1_items(
-                current_payload=current_payload,
-                step1_payload=step1_payload,
-                processed_revues=list(pending_revues.keys()),
-            )
-            save_json(numeros_json, merged)
+                for tmp_file in (tmp_step1_json, tmp_step1_csv):
+                    if tmp_file.exists():
+                        tmp_file.unlink()
+                save_json(tmp_step1_input, {revue_name: ark_value})
 
-            step1_items = step1_payload.get("items", [])
-            for revue_name, ark_value in pending_revues.items():
+                step1_cmd = [
+                    args.python_bin,
+                    str(step1_script),
+                    "--input",
+                    str(tmp_step1_input),
+                    "--output-json",
+                    str(tmp_step1_json),
+                    "--output-csv",
+                    str(tmp_step1_csv),
+                    "--start-year",
+                    str(args.start_year),
+                    "--end-year",
+                    str(args.end_year),
+                    "--requests-per-minute",
+                    str(args.issues_rpm),
+                    "--cb-threshold",
+                    str(args.step1_cb_threshold),
+                    "--cb-sleep-seconds",
+                    str(args.step1_cb_sleep_seconds),
+                    "--cb-max-cooldowns",
+                    str(args.step1_cb_max_cooldowns),
+                    "--user-agent",
+                    args.user_agent,
+                ]
+                rc = stream_command("step1", step1_cmd, cwd)
+                if rc != 0:
+                    step1_has_error = True
+                    print(
+                        f"[ERROR][step1] Revue {revue_name}: sous-script termine avec code {rc}. "
+                        "Pipeline continue."
+                    )
+
+                step1_payload = load_json(tmp_step1_json, default={"items": []})
+                if not isinstance(step1_payload, dict):
+                    step1_payload = {"items": []}
+                current_payload = load_json(numeros_json, default={"items": []})
+                if not isinstance(current_payload, dict):
+                    current_payload = {"items": []}
+                merged = merge_step1_items(
+                    current_payload=current_payload,
+                    step1_payload=step1_payload,
+                    processed_revues=[revue_name],
+                )
+                save_json(numeros_json, merged)
+                save_payload_csv(numeros_csv, merged)
+
+                step1_items = step1_payload.get("items", [])
+                if not isinstance(step1_items, list):
+                    step1_items = []
                 revue_rows = [
                     it for it in step1_items if str(it.get("revue", "")) == revue_name
                 ]
                 revue_errors = [
                     it for it in revue_rows if str(it.get("status", "")).strip() == "error"
                 ]
+
                 if revue_errors:
                     first = revue_errors[0]
                     state["revues"][revue_name] = {
@@ -318,6 +450,13 @@ def main() -> None:
                             f"{first.get('error_message', '')}"
                         ).strip(),
                     }
+                elif rc != 0 and not revue_rows:
+                    state["revues"][revue_name] = {
+                        "status": "error",
+                        "ark": ark_value,
+                        "updated_at": now_iso(),
+                        "last_error": f"step1_subprocess_rc={rc} sans sortie exploitable",
+                    }
                 else:
                     state["revues"][revue_name] = {
                         "status": "done",
@@ -325,12 +464,9 @@ def main() -> None:
                         "updated_at": now_iso(),
                         "last_error": "",
                     }
-            save_json(state_file, state)
-            if rc != 0:
-                print(
-                    "[ERROR][step1] Le script s'est termine avec erreur. "
-                    "Pipeline continue avec les donnees disponibles."
-                )
+                save_json(state_file, state)
+
+            run_meta["step1_rc"] = 1 if step1_has_error else 0
 
     payload_after_step1 = load_json(numeros_json, default={"items": []})
     if not isinstance(payload_after_step1, dict):
@@ -452,6 +588,11 @@ def main() -> None:
     run_meta["finished_at"] = now_iso()
     state["last_run"] = run_meta["finished_at"]
     save_json(state_file, state)
+
+    final_payload = load_json(numeros_json, default={"items": []})
+    if not isinstance(final_payload, dict):
+        final_payload = {"items": []}
+    save_payload_csv(numeros_csv, final_payload)
 
     print(f"[INFO][pipeline_pdf] Termine avec statut: {status}")
     print(f"[INFO][pipeline_pdf] State: {state_file}")

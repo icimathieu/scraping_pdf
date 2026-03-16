@@ -19,6 +19,7 @@ figures/
 *.jpg
 *.csv
 *.jpeg
+input/_tmp_pdf
 
 # Fichiers système
 .DS_Store
@@ -27,8 +28,10 @@ __pycache__/
 
 # Fichiers confidentiels
 gallica.bnf.fr_cookies.txt
+untitled text 2.txt
 
 # Autres 
 note_memoire_scraping.md
 scripts/scraping_gallica_v1.py
 scripts/scraping_pdf_debug
+input/state_step1_revues.json
