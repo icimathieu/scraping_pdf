@@ -134,13 +134,22 @@ def save_csv(path: Path, items: List[Dict[str, Any]]) -> None:
 
 def resolve_pdf_path(item: Dict[str, Any], pdf_root: Path) -> Path:
     pdf_path_raw = str(item.get("pdf_path", "")).strip()
-    if pdf_path_raw:
-        return Path(pdf_path_raw)
-
     revue = sanitize_path_part(str(item.get("revue", "inconnue")), "inconnue")
     numero_id = sanitize_path_part(str(item.get("numero_id", "")), "numero")
     new_layout = pdf_root / revue / numero_id / f"{numero_id}.pdf"
     old_layout = pdf_root / numero_id / f"{numero_id}.pdf"
+
+    if pdf_path_raw:
+        raw_path = Path(pdf_path_raw)
+        # Legacy path pattern: pdf_process/<numero_id>/<numero_id>.pdf
+        legacy_rel = Path("pdf_process") / numero_id / f"{numero_id}.pdf"
+        if raw_path == legacy_rel or raw_path == old_layout:
+            return new_layout if new_layout.exists() else old_layout
+        # If stored path is stale but the new canonical path exists, use canonical.
+        if not raw_path.exists() and new_layout.exists():
+            return new_layout
+        return raw_path
+
     return new_layout if new_layout.exists() else old_layout
 
 

@@ -334,6 +334,18 @@ def cleanup_new_downloads(download_dir: Path, existing_files: Iterable[Path]) ->
     for path in download_dir.iterdir():
         if path.is_file() and path not in existing_set:
             try:
+                size = path.stat().st_size
+                if size > 0:
+                    with path.open("rb") as fh:
+                        prefix = fh.read(8192)
+                    if is_pdf_signature(prefix):
+                        log(
+                            f"[INFO][pdf][cleanup] Conservation du PDF telecharge: {path.name}"
+                        )
+                        continue
+            except OSError:
+                pass
+            try:
                 path.unlink()
             except OSError:
                 pass
@@ -412,8 +424,27 @@ def detect_429_from_browser_state(driver: webdriver.Firefox) -> Optional[Excepti
     except Exception:
         source = ""
 
-    haystack = " ".join([current_url.lower(), title.lower(), source.lower()])
-    if "429" in haystack or "too many requests" in haystack:
+    title_l = title.lower()
+    source_l = source.lower()
+    text_haystack = " ".join([title_l, source_l])
+
+    explicit_markers = (
+        "too many requests",
+        "http 429",
+        "http error 429",
+        "status code 429",
+        "error 429",
+        "erreur 429",
+    )
+    if any(marker in text_haystack for marker in explicit_markers):
+        return TooManyRequestsError(f"429:browser_state:{current_url or title}")
+
+    if re.search(r"\b429\b", text_haystack) and (
+        "request" in text_haystack
+        or "requete" in text_haystack
+        or "rate limit" in text_haystack
+        or "throttl" in text_haystack
+    ):
         return TooManyRequestsError(f"429:browser_state:{current_url or title}")
     return None
 
@@ -434,10 +465,6 @@ def wait_for_download(
     last_progress = time.monotonic()
 
     while time.monotonic() < deadline:
-        browser_exc = detect_429_from_browser_state(driver)
-        if browser_exc is not None:
-            raise browser_exc
-
         part_files = [path for path in download_dir.glob("*.part") if path.is_file()]
         current_files = list_download_candidates(download_dir)
         new_files = [path for path in current_files if path not in existing_set]
@@ -466,6 +493,16 @@ def wait_for_download(
                 stable_count = 1
             if stable_count >= 2:
                 return candidate
+
+        # Si un telechargement est visible (fichier partiel ou nouveau fichier), on
+        # privilegie la stabilisation locale avant d'interpreter l'etat navigateur.
+        if new_files or part_files:
+            time.sleep(poll_interval_seconds)
+            continue
+
+        browser_exc = detect_429_from_browser_state(driver)
+        if browser_exc is not None:
+            raise browser_exc
 
         time.sleep(poll_interval_seconds)
 
