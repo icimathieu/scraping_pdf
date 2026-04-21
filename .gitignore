@@ -25,6 +25,7 @@ input/_tmp_pdf
 .DS_Store
 __pycache__/
 *.pyc
+.claude
 
 # Fichiers confidentiels
 gallica.bnf.fr_cookies.txt
