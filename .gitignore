@@ -35,3 +35,4 @@ note_memoire_scraping.md
 scripts/scraping_gallica_v1.py
 scripts/scraping_pdf_debug
 input/state_step1_revues.json
+tmp_step2_smoke.json

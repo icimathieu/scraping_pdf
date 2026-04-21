@@ -302,7 +302,39 @@ def main() -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
         item["image_output_dir"] = output_dir.as_posix()
 
-        if not pdf_path.exists() or pdf_path.stat().st_size <= 0:
+        pdf_present = pdf_path.exists() and pdf_path.stat().st_size > 0
+
+        # Recuperation idempotente depuis le disque :
+        # si des page_*.png / .tif sont deja presentes et le PDF absent,
+        # on considere le numero comme converti (impossible de verifier
+        # le nombre total attendu sans le PDF, on fait confiance au disque).
+        if not pdf_present and not args.force:
+            existing_on_disk = [
+                p for p in output_dir.glob("page_*.*")
+                if p.suffix.lower() in (".png", ".tif", ".tiff")
+                and p.is_file()
+                and p.stat().st_size > 0
+            ]
+            if existing_on_disk:
+                nb = len(existing_on_disk)
+                item["status"] = "ok"
+                item["pipeline_status"] = "done"
+                item["error_stage"] = ""
+                item["error_code"] = ""
+                item["error_message"] = ""
+                item["images_total"] = nb
+                item["images_existing"] = nb
+                item["images_converted"] = 0
+                item["images_errors"] = 0
+                item["pdf_deleted"] = True
+                print(
+                    f"[INFO][step3][skip_already_converted][{revue_raw}][{numero_id_raw}] "
+                    f"{nb} images deja presentes, PDF absent"
+                )
+                converted_ok += 1
+                continue
+
+        if not pdf_present:
             item["status"] = "error"
             item["pipeline_status"] = "error"
             item["error_stage"] = "pdf_to_jpg_source"
