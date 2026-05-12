@@ -1,15 +1,55 @@
 import argparse
+import atexit
 import csv
 import json
+import os
+import platform
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def start_caffeinate(disabled: bool) -> Optional[subprocess.Popen]:
+    """Lance caffeinate -i lie au PID parent pour empecher la mise en veille.
+
+    Retourne le Popen, ou None si non applicable (Linux, --no-caffeinate, binaire absent).
+    Le subprocess se termine automatiquement quand le parent quitte (option -w).
+    """
+    if disabled:
+        return None
+    if platform.system() != "Darwin":
+        print("[INFO][caffeinate] Plateforme non Darwin, skip caffeinate.")
+        return None
+    try:
+        proc = subprocess.Popen(
+            ["caffeinate", "-i", "-w", str(os.getpid())],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        print("[WARN][caffeinate] Binaire caffeinate introuvable, continue sans.")
+        return None
+
+    def _terminate_caffeinate() -> None:
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+            except ProcessLookupError:
+                pass
+
+    atexit.register(_terminate_caffeinate)
+    print(
+        f"[INFO][caffeinate] Lance (pid={proc.pid}) — mise en veille systeme desactivee "
+        f"pour la duree du run. Desactiver avec --no-caffeinate."
+    )
+    return proc
 
 
 def load_json(path: Path, default: Any) -> Any:
@@ -260,30 +300,43 @@ def main() -> None:
     parser.add_argument("--start-year", type=int, default=1870)
     parser.add_argument("--end-year", type=int, default=1914)
     parser.add_argument("--issues-rpm", type=int, default=5)
-    parser.add_argument("--pdf-rpm", type=float, default=0.5)
+    parser.add_argument("--pdf-rpm", type=float, default=0.3)
     parser.add_argument("--image-rpm", type=int, default=30)
     parser.add_argument("--step1-cb-threshold", type=int, default=5)
     parser.add_argument("--step1-cb-sleep-seconds", type=int, default=600)
-    parser.add_argument("--step1-cb-max-cooldowns", type=int, default=1)
-    parser.add_argument("--step2-cb-threshold", type=int, default=5)
+    parser.add_argument("--step1-cb-max-cooldowns", type=int, default=3)
+    parser.add_argument("--step2-cb-threshold", type=int, default=3)
     parser.add_argument("--step2-cb-sleep-seconds", type=int, default=600)
-    parser.add_argument("--step2-cb-max-cooldowns", type=int, default=1)
+    parser.add_argument("--step2-cb-max-cooldowns", type=int, default=2)
     parser.add_argument("--step3-cb-threshold", type=int, default=5)
     parser.add_argument("--step3-cb-sleep-seconds", type=int, default=600)
+    parser.add_argument("--step3-cb-max-cooldowns", type=int, default=3)
+    parser.add_argument("--no-caffeinate", action="store_true",
+        help="Desactive le lancement automatique de caffeinate -i (macOS uniquement).")
     parser.add_argument("--step2-page-timeout-seconds", type=int, default=60)
-    parser.add_argument("--timeout-pdf", type=int, default=600)
+    parser.add_argument("--timeout-pdf", type=int, default=1800)
+    parser.add_argument("--step2-stalled-timeout-seconds", type=int, default=120,
+        help="Seuil au-dela duquel un .part qui n'a plus progresse est considere "
+             "comme une connexion coupee par le serveur.")
     parser.add_argument("--step2-progress-log-seconds", type=int, default=10)
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--bitonal-threshold", type=int, default=180)
     parser.add_argument("--image-format", choices=("png", "tiff"), default="png")
     parser.add_argument("--poppler-path", default="")
     parser.add_argument("--delete-pdf-after-success", action="store_true")
-    parser.add_argument("--step2-cookies-file", default="")
+    parser.add_argument(
+        "--step2-cookies-file",
+        default="gallica.bnf.fr_cookies.txt",
+        help="Cookies Firefox au format Netscape pour pre-valider l'ALTCHA Gallica. "
+             "Defaut: gallica.bnf.fr_cookies.txt a la racine du projet. Vide pour desactiver.",
+    )
     parser.add_argument("--step2-fail-fast-altcha", action="store_true")
     parser.add_argument("--show-browser", action="store_true")
     parser.add_argument(
         "--user-agent",
-        default="Mozilla/5.0 (Macintosh; Intel Mac OS X 14.0; rv:136.0) Gecko/20100101 Firefox/136.0",
+        default="",
+        help="User-Agent a forcer pour Selenium. Vide (defaut) = User-Agent "
+             "natif de Firefox, evite les mismatch avec altcha_pass.",
     )
     parser.add_argument("--python-bin", default=sys.executable)
     parser.add_argument("--force-step1", action="store_true")
@@ -293,6 +346,8 @@ def main() -> None:
     parser.add_argument("--disable-step2", action="store_true")
     parser.add_argument("--disable-step3", action="store_true")
     args = parser.parse_args()
+
+    start_caffeinate(disabled=args.no_caffeinate)
 
     script_dir = Path(__file__).resolve().parent
     project_root = script_dir.parent.parent
@@ -507,6 +562,8 @@ def main() -> None:
                 str(args.step2_page_timeout_seconds),
                 "--timeout-seconds",
                 str(args.timeout_pdf),
+                "--stalled-timeout-seconds",
+                str(args.step2_stalled_timeout_seconds),
                 "--progress-log-seconds",
                 str(args.step2_progress_log_seconds),
                 "--cookies-file",
@@ -560,6 +617,8 @@ def main() -> None:
                 str(args.step3_cb_threshold),
                 "--cb-sleep-seconds",
                 str(args.step3_cb_sleep_seconds),
+                "--cb-max-cooldowns",
+                str(args.step3_cb_max_cooldowns),
                 "--dpi",
                 str(args.dpi),
                 "--bitonal-threshold",

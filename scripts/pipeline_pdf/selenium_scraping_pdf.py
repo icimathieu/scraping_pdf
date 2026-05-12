@@ -13,6 +13,7 @@ from selenium import webdriver
 from selenium.common.exceptions import (
     ElementClickInterceptedException,
     InvalidCookieDomainException,
+    NoSuchElementException,
     TimeoutException,
     WebDriverException,
 )
@@ -57,41 +58,51 @@ class RateLimiter:
 
 
 class CircuitBreaker429:
+    """Compte TOUTES les erreurs consecutives de telechargement.
+
+    Toute erreur (429, ALTCHA, timeout, WebDriverException, fichier vide,
+    signature PDF invalide, OSError, etc.) incremente le streak. Une reussite
+    le remet a zero.
+    """
+
     def __init__(self, threshold: int, sleep_seconds: int, max_cooldowns: int) -> None:
         self.threshold = max(1, threshold)
         self.sleep_seconds = max(1, sleep_seconds)
         self.max_cooldowns = max(1, max_cooldowns)
-        self.consecutive_429 = 0
+        self.consecutive_failures = 0
         self.cooldowns_used = 0
 
     def record_success(self) -> None:
-        if self.consecutive_429 > 0:
+        if self.consecutive_failures > 0:
             log(
-                f"[INFO][circuit_breaker] reset consecutive_429={self.consecutive_429} after success"
+                f"[INFO][circuit_breaker] reset consecutive_failures={self.consecutive_failures} after success"
             )
-        self.consecutive_429 = 0
+        self.consecutive_failures = 0
 
     def record_failure(self, exc: Exception, context: str) -> None:
-        if not isinstance(exc, (TooManyRequestsError, CaptchaRequiredError)):
-            self.consecutive_429 = 0
-            return
-        self.consecutive_429 += 1
+        # On compte TOUTES les erreurs, pas seulement 429/ALTCHA :
+        # un timeout repete, un Firefox qui crash, un fichier vide rendu sont
+        # autant de signaux qu'il faut faire une pause.
+        self.consecutive_failures += 1
+        kind = exc.__class__.__name__
         log(
-            f"[WARN][circuit_breaker] throttle streak={self.consecutive_429}/{self.threshold} "
-            f"context={context}"
+            f"[WARN][circuit_breaker] failures streak={self.consecutive_failures}/{self.threshold} "
+            f"kind={kind} context={context}"
         )
-        if self.consecutive_429 >= self.threshold:
+        if self.consecutive_failures >= self.threshold:
             if self.cooldowns_used >= self.max_cooldowns:
                 raise ThrottleStopError(
-                    "throttle_stop: trop de signaux de throttling malgre les cooldowns; arret definitif"
+                    f"circuit_breaker_stop: {self.consecutive_failures} echecs consecutifs "
+                    f"malgre {self.cooldowns_used} cooldown(s); arret definitif."
                 )
             log(
                 f"[WARN][circuit_breaker] Sleeping {self.sleep_seconds}s after "
-                f"{self.consecutive_429} consecutive throttle signals"
+                f"{self.consecutive_failures} consecutive failures "
+                f"(cooldown {self.cooldowns_used + 1}/{self.max_cooldowns})"
             )
             time.sleep(self.sleep_seconds)
             self.cooldowns_used += 1
-            self.consecutive_429 = 0
+            self.consecutive_failures = 0
 
 
 def log(message: str) -> None:
@@ -253,7 +264,29 @@ def load_cookies(cookies_file: str) -> List[http.cookiejar.Cookie]:
         return []
     jar = http.cookiejar.MozillaCookieJar()
     jar.load(str(cookie_path), ignore_discard=True, ignore_expires=True)
-    return list(jar)
+    cookies = list(jar)
+
+    # Check d'expiration : alerte si altcha_pass est expire ou expirera bientot.
+    # Le token altcha_pass est la preuve qu'on a deja resolu un defi anti-bot
+    # cote serveur ; il a typiquement une duree de vie de quelques heures.
+    now_ts = time.time()
+    altcha = next((c for c in cookies if c.name == "altcha_pass"), None)
+    if altcha is None:
+        log("[WARN][pdf][cookies] Aucun token 'altcha_pass' dans le cookies-file. "
+            "Risque eleve de blocage ALTCHA — regenerer le fichier en resolvant un defi sur Gallica.")
+    elif altcha.expires and altcha.expires < now_ts:
+        from datetime import datetime, timezone
+        expired_at = datetime.fromtimestamp(altcha.expires, tz=timezone.utc).isoformat()
+        log(f"[WARN][pdf][cookies] Token altcha_pass EXPIRE depuis {expired_at}. "
+            "Regenere le cookies-file via Firefox + extension cookies.txt.")
+    elif altcha.expires:
+        from datetime import datetime, timezone
+        valid_until = datetime.fromtimestamp(altcha.expires, tz=timezone.utc).isoformat()
+        remaining_h = (altcha.expires - now_ts) / 3600.0
+        log(f"[INFO][pdf][cookies] Token altcha_pass valide jusqu'a {valid_until} "
+            f"(reste {remaining_h:.1f}h).")
+
+    return cookies
 
 
 def seed_driver_cookies(
@@ -456,32 +489,70 @@ def wait_for_download(
     download_timeout_seconds: int,
     poll_interval_seconds: float,
     progress_log_seconds: int,
+    stalled_timeout_seconds: int = 120,
 ) -> Path:
+    """Attend qu'un PDF apparaisse dans download_dir.
+
+    Strategie:
+    - Tant que le .part grossit (le download progresse), on n'abandonne pas,
+      meme au-dela du download_timeout_seconds. Logique : un PDF de 200 Mo
+      sur une connexion lente peut depasser le timeout par defaut.
+    - On abandonne uniquement si le .part est STABLE (taille inchangee)
+      depuis stalled_timeout_seconds (defaut 120s = 2 min) : ca signifie
+      que la connexion a ete dropee par le serveur.
+    - Le download_timeout_seconds reste un plafond global tant que rien
+      n'est detecte (ni .part, ni nouveau fichier).
+    """
     existing_set = set(existing_files)
-    deadline = time.monotonic() + download_timeout_seconds
+    deadline_global = time.monotonic() + download_timeout_seconds
     observed_candidate = None
     observed_size = None
     stable_count = 0
-    last_progress = time.monotonic()
+    last_progress_log = time.monotonic()
 
-    while time.monotonic() < deadline:
+    # Suivi du progres .part pour detecter les downloads stalles vs actifs
+    last_part_total_size = 0
+    last_part_progress_at = time.monotonic()
+
+    while True:
+        now = time.monotonic()
         part_files = [path for path in download_dir.glob("*.part") if path.is_file()]
         current_files = list_download_candidates(download_dir)
         new_files = [path for path in current_files if path not in existing_set]
 
-        if progress_log_seconds > 0 and (time.monotonic() - last_progress) >= progress_log_seconds:
-            current_sizes = []
+        # Taille totale des .part (nouveau)
+        part_total_size = 0
+        part_sizes_log = []
+        for p in part_files:
+            try:
+                s = p.stat().st_size
+                part_total_size += s
+                part_sizes_log.append(f"{p.name}:{s}")
+            except OSError:
+                part_sizes_log.append(f"{p.name}:?")
+
+        # Reset deadline si le .part progresse (= download actif)
+        if part_total_size > last_part_total_size:
+            last_part_total_size = part_total_size
+            last_part_progress_at = now
+
+        if progress_log_seconds > 0 and (now - last_progress_log) >= progress_log_seconds:
+            new_sizes = []
             for path in sorted(new_files):
                 try:
-                    current_sizes.append(f"{path.name}:{path.stat().st_size}")
+                    new_sizes.append(f"{path.name}:{path.stat().st_size}")
                 except OSError:
-                    current_sizes.append(f"{path.name}:?")
+                    new_sizes.append(f"{path.name}:?")
+            stall_age = now - last_part_progress_at
             log(
-                f"[INFO][pdf][download_wait] part_files={len(part_files)} "
-                f"new_files={current_sizes or ['none']}"
+                f"[INFO][pdf][download_wait] "
+                f"part={part_sizes_log or ['none']} "
+                f"new_files={new_sizes or ['none']} "
+                f"stall_age={stall_age:.0f}s"
             )
-            last_progress = time.monotonic()
+            last_progress_log = now
 
+        # Cas succes: un fichier final non-.part stable
         if new_files and not part_files:
             candidate = max(new_files, key=lambda path: path.stat().st_mtime)
             size = candidate.stat().st_size
@@ -494,19 +565,32 @@ def wait_for_download(
             if stable_count >= 2:
                 return candidate
 
-        # Si un telechargement est visible (fichier partiel ou nouveau fichier), on
-        # privilegie la stabilisation locale avant d'interpreter l'etat navigateur.
-        if new_files or part_files:
+        # Cas abandon: .part stalle depuis trop longtemps (= connexion dropee)
+        if part_files and (now - last_part_progress_at) > stalled_timeout_seconds:
+            raise TimeoutError(
+                f"download_stalled: .part inchange depuis {now - last_part_progress_at:.0f}s "
+                f"(seuil={stalled_timeout_seconds}s), connexion probablement coupee par le serveur"
+            )
+
+        # Cas patience: .part qui grossit -> on attend, meme au-dela du deadline global
+        if part_files:
             time.sleep(poll_interval_seconds)
             continue
 
-        browser_exc = detect_429_from_browser_state(driver)
-        if browser_exc is not None:
-            raise browser_exc
+        # Pas de .part, pas de nouveau fichier -> on attend jusqu'au deadline global
+        if now >= deadline_global:
+            browser_exc = detect_429_from_browser_state(driver)
+            if browser_exc is not None:
+                raise browser_exc
+            raise infer_failure_from_browser_state(driver)
+
+        # Detection 429 / captcha si rien ne se passe
+        if not new_files:
+            browser_exc = detect_429_from_browser_state(driver)
+            if browser_exc is not None:
+                raise browser_exc
 
         time.sleep(poll_interval_seconds)
-
-    raise infer_failure_from_browser_state(driver)
 
 
 def trigger_download(
@@ -515,24 +599,36 @@ def trigger_download(
     click_locator: Optional[Tuple[str, str]],
     click_timeout_seconds: int,
 ) -> None:
-    if click_locator is not None:
-        try:
-            driver.get(target_url)
-        except TimeoutException:
-            log(
-                f"[WARN][pdf][page_load_timeout] navigation timeout sur {target_url}, "
-                "tentative de poursuivre avec le clic"
-            )
-        log(f"[INFO][pdf][click_wait] locator={click_locator[1]}")
-        click_download_trigger(driver, click_locator, click_timeout_seconds)
-        log("[INFO][pdf][click_done] attente du telechargement")
-        return
-    driver.get("about:blank")
+    # Toujours naviguer vers l'URL PDF. Un timeout de page n'est pas une erreur :
+    # quand Gallica sert directement le PDF en attachement, la "page" ne finit
+    # jamais de charger mais le telechargement demarre cote navigateur.
     try:
-        driver.execute_script("window.location.href = arguments[0];", target_url)
+        driver.get(target_url)
     except TimeoutException:
-        # Un telechargement PDF ne correspond pas toujours a un chargement de page classique.
-        pass
+        log(
+            f"[INFO][pdf][page_load_timeout] navigation a depasse le timeout sur {target_url} "
+            "(normal si le serveur stream le PDF directement), on continue."
+        )
+
+    if click_locator is None:
+        return
+
+    # Tentative de clic ALTCHA en BEST-EFFORT : si le checkbox est present,
+    # on le clique pour debloquer le telechargement ; s'il est absent (cas le
+    # plus frequent), on n'echoue pas, on laisse wait_for_download attendre
+    # le fichier qui arrive deja via la navigation directe.
+    log(
+        f"[INFO][pdf][altcha_probe] locator={click_locator[1]} "
+        f"timeout={click_timeout_seconds}s (best-effort)"
+    )
+    try:
+        click_download_trigger(driver, click_locator, click_timeout_seconds)
+        log("[INFO][pdf][altcha_clicked] checkbox ALTCHA clique, attente du telechargement")
+    except (TimeoutException, NoSuchElementException, WebDriverException) as exc:
+        log(
+            f"[INFO][pdf][altcha_absent] pas de checkbox ALTCHA detecte "
+            f"({exc.__class__.__name__}), passage en attente passive du telechargement"
+        )
 
 
 def file_has_pdf_signature(path: Path) -> bool:
@@ -553,17 +649,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", default="input/arks_numeros.json")
     parser.add_argument("--output-csv", default="input/tableau_arks_numeros.csv")
     parser.add_argument("--pdf-root", default="pdf_process")
-    parser.add_argument("--requests-per-minute", type=float, default=0.5)
-    parser.add_argument("--cb-threshold", type=int, default=5)
+    parser.add_argument("--requests-per-minute", type=float, default=0.3)
+    parser.add_argument("--cb-threshold", type=int, default=3)
     parser.add_argument("--cb-sleep-seconds", type=int, default=600)
-    parser.add_argument("--cb-max-cooldowns", type=int, default=1)
+    parser.add_argument("--cb-max-cooldowns", type=int, default=2)
     parser.add_argument("--page-timeout-seconds", type=int, default=60)
-    parser.add_argument("--timeout-seconds", type=int, default=600)
+    parser.add_argument("--timeout-seconds", type=int, default=1800)
+    parser.add_argument("--stalled-timeout-seconds", type=int, default=120,
+        help="Si le .part en cours de download n'a pas progresse depuis ce delai, "
+             "on considere la connexion comme coupee et on abandonne ce PDF.")
     parser.add_argument(
         "--user-agent",
-        default="Mozilla/5.0 (Macintosh; Intel Mac OS X 14.0; rv:136.0) Gecko/20100101 Firefox/136.0",
+        default="",
+        help="User-Agent a forcer dans Firefox. Vide (defaut) = laisse Firefox "
+             "envoyer son User-Agent natif, ce qui evite les mismatch avec un "
+             "altcha_pass genere depuis le meme Firefox.",
     )
-    parser.add_argument("--cookies-file", default="")
+    parser.add_argument("--cookies-file", default="gallica.bnf.fr_cookies.txt")
     parser.add_argument("--progress-log-seconds", type=int, default=10)
     parser.add_argument("--fail-fast-altcha", action="store_true")
     parser.add_argument("--force", action="store_true")
@@ -634,8 +736,41 @@ def main() -> None:
     download_dir.mkdir(parents=True, exist_ok=True)
     options = build_firefox_options(download_dir, headless, firefox_binary, args.user_agent)
     service = Service(str(geckodriver_path))
-    driver = webdriver.Firefox(service=service, options=options)
+
+    # Retry sur le demarrage Selenium : Firefox est parfois flaky au lancement
+    # ("Process unexpectedly closed with status 0"). On retente jusqu'a 5 fois
+    # avec un delai exponentiel.
+    last_exc: Optional[Exception] = None
+    driver = None
+    for attempt in range(1, 6):
+        try:
+            driver = webdriver.Firefox(service=service, options=options)
+            if attempt > 1:
+                log(f"[INFO][pdf] Firefox demarre apres {attempt} tentative(s)")
+            break
+        except WebDriverException as exc:
+            last_exc = exc
+            wait = 5 * attempt
+            log(
+                f"[WARN][pdf] Echec demarrage Firefox (tentative {attempt}/5): {exc}. "
+                f"Nouvel essai dans {wait}s."
+            )
+            time.sleep(wait)
+    if driver is None:
+        raise RuntimeError(
+            f"Impossible de demarrer Firefox apres 5 tentatives: {last_exc}"
+        )
     driver.set_page_load_timeout(max(args.page_timeout_seconds, 5))
+
+    # Log de l'UA effectif (utile pour debugger les mismatch ALTCHA :
+    # le UA doit correspondre a celui qui a genere le altcha_pass).
+    try:
+        driver.get("about:blank")
+        actual_ua = driver.execute_script("return navigator.userAgent;")
+        ua_source = "override (--user-agent)" if args.user_agent.strip() else "natif Firefox"
+        log(f"[INFO][pdf] User-Agent effectif ({ua_source}): {actual_ua}")
+    except Exception as exc:
+        log(f"[WARN][pdf] Impossible de lire le User-Agent effectif: {exc}")
     if args.cookies_file:
         seed_driver_cookies(driver, "https://gallica.bnf.fr/", args.cookies_file)
 
@@ -748,6 +883,7 @@ def main() -> None:
                     download_timeout_seconds=args.timeout_seconds,
                     poll_interval_seconds=args.poll_interval_seconds,
                     progress_log_seconds=args.progress_log_seconds,
+                    stalled_timeout_seconds=args.stalled_timeout_seconds,
                 )
                 raise_for_non_pdf_payload(downloaded_file)
                 output_dir.mkdir(parents=True, exist_ok=True)

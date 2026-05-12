@@ -273,7 +273,7 @@ def main() -> None:
     )
     parser.add_argument("--cb-threshold", type=int, default=5)
     parser.add_argument("--cb-sleep-seconds", type=int, default=600)
-    parser.add_argument("--cb-max-cooldowns", type=int, default=1)
+    parser.add_argument("--cb-max-cooldowns", type=int, default=3)
     args = parser.parse_args()
 
     input_path = Path(args.input)

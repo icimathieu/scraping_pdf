@@ -2,6 +2,7 @@ import argparse
 import csv
 import json
 import re
+import sys
 import time
 from collections import deque
 from pathlib import Path
@@ -33,11 +34,17 @@ class RateLimiter:
         self.timestamps.append(time.monotonic())
 
 
+class CircuitBreakerStop(RuntimeError):
+    pass
+
+
 class CircuitBreakerFailures:
-    def __init__(self, threshold: int, sleep_seconds: int) -> None:
+    def __init__(self, threshold: int, sleep_seconds: int, max_cooldowns: int = 3) -> None:
         self.threshold = max(1, threshold)
         self.sleep_seconds = max(1, sleep_seconds)
+        self.max_cooldowns = max(1, max_cooldowns)
         self.consecutive_failures = 0
+        self.cooldowns_used = 0
 
     def record_success(self) -> None:
         if self.consecutive_failures > 0:
@@ -53,10 +60,16 @@ class CircuitBreakerFailures:
             f"context={context}"
         )
         if self.consecutive_failures >= self.threshold:
+            if self.cooldowns_used >= self.max_cooldowns:
+                raise CircuitBreakerStop(
+                    f"circuit_breaker_stop: trop d'echecs consecutifs malgre {self.cooldowns_used} cooldowns; arret definitif"
+                )
             print(
-                f"[WARN][circuit_breaker] Sleeping {self.sleep_seconds}s after {self.consecutive_failures} consecutive failures"
+                f"[WARN][circuit_breaker] Sleeping {self.sleep_seconds}s after {self.consecutive_failures} consecutive failures "
+                f"(cooldown {self.cooldowns_used + 1}/{self.max_cooldowns})"
             )
             time.sleep(self.sleep_seconds)
+            self.cooldowns_used += 1
             self.consecutive_failures = 0
 
 
@@ -227,6 +240,7 @@ def main() -> None:
     parser.add_argument("--requests-per-minute", type=int, default=120)
     parser.add_argument("--cb-threshold", type=int, default=5)
     parser.add_argument("--cb-sleep-seconds", type=int, default=600)
+    parser.add_argument("--cb-max-cooldowns", type=int, default=3)
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--bitonal-threshold", type=int, default=180)
     parser.add_argument("--image-format", choices=("png", "tiff"), default="png")
@@ -253,13 +267,18 @@ def main() -> None:
     payload = load_payload(input_path)
     items = ensure_items(payload)
     limiter = RateLimiter(args.requests_per_minute)
-    circuit_breaker = CircuitBreakerFailures(args.cb_threshold, args.cb_sleep_seconds)
+    circuit_breaker = CircuitBreakerFailures(
+        args.cb_threshold, args.cb_sleep_seconds, args.cb_max_cooldowns
+    )
 
     converted_ok = 0
     converted_error = 0
     skipped_prior_error = 0
 
+    stopped_by_cb_message = ""
     for item in items:
+        if stopped_by_cb_message:
+            break
         if str(item.get("status", "")).strip() == "error" and not str(
             item.get("issue_ark", "")
         ).strip():
@@ -358,9 +377,14 @@ def main() -> None:
                 raise ValueError("Nombre de pages nul ou introuvable")
             circuit_breaker.record_success()
         except Exception as exc:
-            circuit_breaker.record_failure(
-                context=f"revue={revue_raw} numero_id={numero_id_raw} stage=pdfinfo"
-            )
+            try:
+                circuit_breaker.record_failure(
+                    context=f"revue={revue_raw} numero_id={numero_id_raw} stage=pdfinfo"
+                )
+            except CircuitBreakerStop as cb_exc:
+                stopped_by_cb_message = str(cb_exc)
+                print(f"[ERROR][step3][circuit_breaker_stop] {stopped_by_cb_message}")
+                break
             item["status"] = "error"
             item["pipeline_status"] = "error"
             item["error_stage"] = "pdf_to_jpg_pdfinfo"
@@ -427,12 +451,19 @@ def main() -> None:
                 circuit_breaker.record_success()
             except Exception as exc:
                 errors += 1
-                circuit_breaker.record_failure(
-                    context=(
-                        f"revue={revue_raw} numero_id={numero_id_raw} "
-                        f"stage=convert page={page_index}"
+                try:
+                    circuit_breaker.record_failure(
+                        context=(
+                            f"revue={revue_raw} numero_id={numero_id_raw} "
+                            f"stage=convert page={page_index}"
+                        )
                     )
-                )
+                except CircuitBreakerStop as cb_exc:
+                    stopped_by_cb_message = str(cb_exc)
+                    print(f"[ERROR][step3][circuit_breaker_stop] {stopped_by_cb_message}")
+                    if first_error is None:
+                        first_error = (error_code_from_exception(exc), str(exc))
+                    break
                 if first_error is None:
                     first_error = (error_code_from_exception(exc), str(exc))
 
@@ -505,6 +536,10 @@ def main() -> None:
     print(f"JSON mis a jour: {output_path}")
     print(f"CSV mis a jour: {output_csv_path}")
     print(f"Images: {image_root}")
+
+    if stopped_by_cb_message:
+        print(f"[ERROR][step3] Arret par circuit breaker: {stopped_by_cb_message}")
+        sys.exit(2)
 
 
 if __name__ == "__main__":
