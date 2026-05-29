@@ -1,43 +1,5 @@
 # scraping_pdf — collecte Gallica / IIIᵉ République (1870-1914)
 
-Code de collecte automatique des **revues scientifiques de la IIIᵉ République numérisées sur Gallica (BnF)**, dans le cadre d'un mémoire de recherche en histoire. Le pipeline produit des images bitonales prêtes pour l'OCR (traité dans un dépôt séparé via Tesseract).
-
-> Le scraping respecte strictement les [conditions de réutilisation des données de la BnF](https://api.bnf.fr/fr/node/232) (en-tête `User-Agent` explicite, limitation du débit, gestion des 429). Aucune donnée d'authentification n'est versionnée ; le fichier `gallica.bnf.fr_cookies.txt` (cookies de session pour bypasser ALTCHA en étape 2) est gitignored.
-
-## Vue d'ensemble
-
-Le corpus cible : **45 revues**, **~9225 numéros** entre 1870 et 1914, soit **~884 000 pages** au total (estimation après scraping de 94 % des manifestes IIIF).
-
-Deux pipelines coexistent, complémentaires :
-
-| Pipeline | Source primaire | Sortie | Usage actuel |
-|---|---|---|---|
-| **PDF** (`scripts/pipeline_pdf/`) | `https://gallica.bnf.fr/{ark}.pdf` (téléchargement Selenium/Firefox) | PNG/TIFF bitonal | **Gros numéros (≥500 pages)** — environ 10 % des numéros mais 73 % du volume |
-| **IIIF** (`scripts/pipeline_manifest_iiif/`) | `https://gallica.bnf.fr/iiif/{ark}/manifest.json` + Image API en bitonal full | JPG bitonal | **Petits numéros (<500 pages)** — environ 90 % des numéros, 27 % du volume |
-
-La partition à 500 pages est calculée à partir des manifestes IIIF par `analyze_pages_and_partition.py` (script de répartition, ne fait aucune requête réseau). Le seuil tombe dans le creux d'une distribution bimodale : fascicules courts (<50 pages) vs. volumes annuels reliés (~500-1000 pages).
-
-## Installation rapide
-
-```bash
-git clone https://github.com/icimathieu/scraping_pdf.git
-cd scraping_pdf
-
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-Dépendances système (non installées par pip) :
-
-| Binaire | Rôle | Installation macOS |
-|---|---|---|
-| Firefox | étape PDF (Selenium) | https://www.mozilla.org/firefox/ |
-| `geckodriver` | pilote Selenium pour Firefox | `brew install geckodriver` |
-| `poppler` | conversion PDF → images (`pdfinfo`, `pdftoppm`) | `brew install poppler` |
-
-Sur Linux : `apt install firefox-esr poppler-utils` puis [installer geckodriver](https://github.com/mozilla/geckodriver/releases).
-
 ## Structure du dépôt
 
 ```
@@ -75,6 +37,41 @@ Les deux fichiers de spécification détaillent chaque étape :
 - [pipeline_pdf.md](pipeline_pdf.md) — pipeline PDF (gros numéros)
 - [pipeline_manifest.md](pipeline_manifest.md) — pipeline IIIF + partition de page (petits numéros)
 
+## Vue d'ensemble
+
+Le corpus cible : **45 revues**, **~9225 numéros** entre 1870 et 1914, soit **~884 000 pages** au total (estimation après scraping de 94 % des manifestes IIIF).
+
+Deux pipelines coexistent, complémentaires :
+
+| Pipeline | Source primaire | Sortie | Usage actuel |
+|---|---|---|---|
+| **PDF** (`scripts/pipeline_pdf/`) | `https://gallica.bnf.fr/{ark}.pdf` (téléchargement Selenium/Firefox) | PNG/TIFF bitonal | **Gros numéros (≥500 pages)** — environ 10 % des numéros mais 73 % du volume |
+| **IIIF** (`scripts/pipeline_manifest_iiif/`) | `https://gallica.bnf.fr/iiif/{ark}/manifest.json` + Image API en bitonal full | JPG bitonal | **Petits numéros (<500 pages)** — environ 90 % des numéros, 27 % du volume |
+
+La partition à 500 pages est calculée à partir des manifestes IIIF par `analyze_pages_and_partition.py`. 
+
+## Installation rapide
+
+```bash
+git clone https://github.com/icimathieu/scraping_pdf.git
+cd scraping_pdf
+
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Dépendances système (non installées par pip) :
+
+| Binaire | Rôle | Installation macOS |
+|---|---|---|
+| Firefox | étape PDF (Selenium) | https://www.mozilla.org/firefox/ |
+| `geckodriver` | pilote Selenium pour Firefox | `brew install geckodriver` |
+| `poppler` | conversion PDF → images (`pdfinfo`, `pdftoppm`) | `brew install poppler` |
+
+Sur Linux : `apt install firefox-esr poppler-utils` puis [installer geckodriver](https://github.com/mozilla/geckodriver/releases).
+
+
 ## Pipeline PDF — usage
 
 L'orchestrateur enchaîne les 3 étapes (revues → numéros → PDF → images bitonales) avec **reprise et idempotence** : chaque étape détecte ce qui reste à faire. `caffeinate -i` est lancé automatiquement sur macOS pour empêcher la mise en veille du Mac pendant les longs runs.
@@ -94,7 +91,7 @@ Voir [pipeline_pdf.md](pipeline_pdf.md) pour les paramètres détaillés (cadenc
 
 ## Pipeline IIIF — usage
 
-Les manifestes IIIF de tous les numéros sont d'abord récupérés (étape 2 manifest), puis `analyze_pages_and_partition.py` produit deux JSON de partition. Les images bitonales des petits numéros sont ensuite téléchargées via l'IIIF Image API.
+Les manifestes IIIF de tous les numéros sont d'abord récupérés (étape 2 manifest), puis `analyze_pages_and_partition.py` produit deux JSON de partition. Les images bitonales des numéros de moins de 500 pages sont ensuite téléchargées via l'API IIIF Image.
 
 ```bash
 # Etape 2 manifest (1 req/min recommande pour respecter Gallica)
@@ -146,4 +143,4 @@ Ces valeurs sont les défauts des scripts. Le circuit breaker arrête le run apr
 
 ## Licence
 
-Voir [LICENSE](LICENSE). Le code est sous licence GPL-3.0. Les données collectées (revues numérisées) restent la propriété de la Bibliothèque nationale de France, distribuées sous leurs propres conditions de réutilisation (https://gallica.bnf.fr/edit/und/conditions-dutilisation-des-contenus-de-gallica).
+Voir [LICENSE](LICENSE).
