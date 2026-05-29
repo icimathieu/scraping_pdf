@@ -3,37 +3,54 @@
 venv/
 env/
 
-# Data
+# Sorties de pipeline (volumineuses, regenerables)
 data/
 manifest_iiif_process/
 images_process/
 pdf_process/
-
-# Outputs
 output/
 outputs/
 figures/
+test_iiif/
 
-# Fichiers générés
+# Fichiers binaires generes
 *.png
 *.jpg
-*.csv
 *.jpeg
-input/_tmp_pdf
+*.tif
+*.tiff
+*.pdf
 
-# Fichiers système
+# CSV (les JSON source font foi, les CSV sont des miroirs derives)
+*.csv
+
+# Tampons / partiel
+input/_tmp_pdf
+tmp_step2_smoke.json
+input/state_step1_revues.json
+
+# Notebooks exploratoires (non maintenus pour publication)
+scripts/scraping_pdfs_gallica.ipynb
+*.ipynb_checkpoints/
+
+# Scripts one-shot / debug (non maintenus)
+scripts/scraping_gallica_v1.py
+scripts/scraping_pdf_debug
+scripts/cron_iiif_step2_full.sh
+
+# Notes privees / brouillons
+note_memoire_scraping.md
+untitled text 2.txt
+
+# Cookies de session (NE JAMAIS COMMITER)
+gallica.bnf.fr_cookies.txt
+*.cookies.txt
+
+# Fichiers systeme
 .DS_Store
 __pycache__/
 *.pyc
+*.pyo
 .claude
-
-# Fichiers confidentiels
-gallica.bnf.fr_cookies.txt
-untitled text 2.txt
-
-# Autres 
-note_memoire_scraping.md
-scripts/scraping_gallica_v1.py
-scripts/scraping_pdf_debug
-input/state_step1_revues.json
-tmp_step2_smoke.json
+.vscode/
+.idea/

@@ -1,369 +1,317 @@
-Pipeline Gallica (4 etapes)
-===========================
+Pipeline Gallica IIIF (4 etapes + partition)
+============================================
 
 Objectif global
 ---------------
-- A partir d'ARK de revues, produire la liste complete des ARK de numeros sur une periode donnee.
-- Pour chaque numero, recuperer le manifest IIIF.
-- A partir du manifest, telecharger les images bitonales "full" page par page.
-- Industrialiser l'ensemble dans un orchestrateur avec reprise.
+- A partir d'ARK de revues, produire la liste des ARK de numeros sur une periode donnee.
+- Pour chaque numero, recuperer le manifest IIIF (decrit la liste des canvases =
+  pages disponibles).
+- Calculer le nombre de pages par numero et partitionner le corpus en deux
+  ensembles : gros numeros (>= seuil) traites par la pipeline PDF, petits numeros
+  (< seuil) traites par la pipeline IIIF Image.
+- Pour les petits numeros : telecharger les images bitonales "full" page par page
+  via l'IIIF Image API.
+- Industrialiser le tout dans un orchestrateur avec reprise.
 
 
-ETAPE 1 - Revue ARK -> ARK de tous les numeros (deja codee)
------------------------------------------------------------
+ETAPE 1 - Revue ARK -> ARK de tous les numeros
+----------------------------------------------
 Script de reference:
-- scripts/scraping_arks_numeros_gallica.py
+- scripts/pipeline_manifest_iiif/scraping_arks_numeros_gallica.py
+
+Identique a l'etape 1 de la pipeline PDF dans son comportement, mais ecrit dans le
+meme JSON (les deux pipelines partagent input/arks_numeros.json).
 
 Entree:
 - input/arks_revues.json
-- Format attendu: JSON objet { "nom_revue": "ark_ou_url_perenne" }
+- Format attendu : JSON objet { "nom_revue": "ark_ou_url_perenne" }
 
 Sorties:
-- JSON: input/arks_numeros.json
-- CSV:  input/tableau_arks_numeros.csv
+- JSON : input/arks_numeros.json
+- CSV  : input/tableau_arks_numeros.csv
 
-Sous-etapes detaillees:
-1. Chargement de la configuration CLI.
-   - Parametres principaux:
-     - --input (defaut: input/arks_revues.json)
-     - --output-json (defaut: input/arks_numeros.json)
-     - --output-csv (defaut: input/tableau_arks_numeros.csv)
-     - --start-year (defaut: 1870)
-     - --end-year (defaut: 1914)
-     - --requests-per-minute (defaut: 10)
-     - --user-agent (defaut: memoire-gallica-scraper/1.0 (+contact-local))
+Parametres CLI principaux (defauts):
+- --input                  input/arks_revues.json
+- --output-json            input/arks_numeros.json
+- --output-csv             input/tableau_arks_numeros.csv
+- --start-year             1870
+- --end-year               1914
+- --requests-per-minute    10
+- --user-agent             "memoire-gallica-scraper/1.0 (+contact-local)"
+- --cb-threshold           5
+- --cb-sleep-seconds       600
 
-2. Chargement du fichier revues.
-   - Lecture JSON avec json.load.
-   - Validation implicite du format dictionnaire nom->ark/url.
+Logique (voir aussi pipeline_pdf.md pour les details) :
+1. Normalisation des ARK de revue ("ark:/12148/..." + suffixe "/date").
+2. GET https://gallica.bnf.fr/services/Issues?ark=<ark_revue_date>, parsing XML,
+   extraction des balises <year>.
+3. Pour chaque annee dans [start_year, end_year] : GET de la liste des fascicules,
+   parsing des <issue> et construction du numero_id.
+4. Ecriture JSON + CSV.
 
-3. Normalisation de l'ARK de revue.
-   - Extraction de la forme "ark:/12148/xxxx" meme si la valeur source est une URL.
-   - Ajout du suffixe "/date" si absent.
-   - Resultat attendu pour l'API Issues: "ark:/12148/.../date".
-
-4. Initialisation HTTP robuste.
-   - requests.Session.
-   - Retry automatique sur erreurs transitoires:
-     - codes: 429, 500, 502, 503, 504
-     - retries reseau connect/read
-     - backoff exponentiel.
-   - timeout de requete (30s dans le script actuel).
-   - User-Agent explicite.
-
-5. Application d'un rate limiting client.
-   - Limiteur local en fenetre glissante (60s).
-   - Maximum configurable de requetes/minute (defaut 10).
-   - Attente automatique avant chaque appel si la fenetre est pleine.
-
-6. Recuperation des annees de parution pour chaque revue.
-   - Appel:
-     - GET https://gallica.bnf.fr/services/Issues?ark=<ark_revue_date>
-   - Parsing XML de la reponse.
-   - Extraction de toutes les balises <year>.
-   - Conversion en entiers et tri.
-
-7. Filtrage de la periode.
-   - Conservation des annees y telles que:
-     - start_year <= y <= end_year
-   - Cas courant:
-     - 1870 <= y <= 1914.
-
-8. Recuperation des fascicules annee par annee.
-   - Pour chaque annee retenue:
-     - GET https://gallica.bnf.fr/services/Issues?ark=<ark_revue_date>&date=<annee>
-   - Parsing XML.
-   - Pour chaque balise <issue>:
-     - lecture attribut ark (ARK du numero)
-     - lecture attribut dayOfYear (si present)
-     - lecture texte libre "precision".
-
-9. Normalisation des ARK de numero.
-   - Si l'attribut issue ark ne contient pas le prefixe complet:
-     - reconstruction "ark:/12148/<id>".
-
-10. Construction d'un identifiant "numero_id".
-    - Si la precision contient une date "YYYY/MM/DD":
-      - numero_id = <nom_revue> + YYYYMMDD.
-    - Sinon fallback deterministic:
-      - numero_id = <nom_revue><annee><dayOfYear sur 3 chiffres>_<id_ark_court>.
-
-11. Construction de la structure de sortie.
-    - Une entree "items" par numero, chaque item contenant:
-      - revue
-      - parent_ark_date
-      - year
-      - day_of_year
-      - numero_id
-      - issue_ark
-      - precision
-      - status
-      - error_stage
-      - error_code
-      - error_message
-
-12. Ecriture des fichiers.
-    - JSON final:
-      - period {start_year, end_year}
-      - total_issues
-      - total_errors
-      - total_events
-      - items[]
-    - CSV final (sans index explicite):
-      - revue,parent_ark_date,year,day_of_year,numero_id,issue_ark,precision,status,error_stage,error_code,error_message
-
-13. Trace d'execution console.
-    - Affiche la revue en cours.
-    - Affiche le nombre d'annees retenues.
-    - Affiche le nombre final de fascicules exportes.
-
-Commande d'execution type:
-- .venv/bin/python -u scripts/scraping_arks_numeros_gallica.py
+Commande:
+  .venv/bin/python -u scripts/pipeline_manifest_iiif/scraping_arks_numeros_gallica.py
 
 
-ETAPE 2 - ARK de numero -> manifest.json IIIF (deja codee)
-----------------------------------------------------------
+ETAPE 2 - ARK de numero -> manifest.json IIIF
+---------------------------------------------
 Script de reference:
-- scripts/scraping_manifest_gallica.py
+- scripts/pipeline_manifest_iiif/scraping_manifest_gallica.py
 
 Entree:
 - input/arks_numeros.json (structure avec items[])
 
 Sorties:
-- JSON enrichi: input/arks_numeros.json
-- CSV enrichi:  input/tableau_arks_numeros.csv
-- Manifests sur disque:
-  - manifest_iiif_process/<revue>/<numero_id>.manifest.json
+- JSON enrichi : input/arks_numeros_with_manifests.json (le nom par defaut peut
+  varier selon la commande -- ne pas ecraser arks_numeros.json par precaution)
+- CSV miroir  : input/tableau_arks_numeros_with_manifests.csv
+- Manifests sur disque : manifest_iiif_process/<revue>/<numero_id>.manifest.json
 
-Sous-etapes detaillees:
-1. Chargement de la configuration CLI.
-   - Parametres principaux:
-     - --input (defaut: input/arks_numeros.json)
-     - --output (defaut: input/arks_numeros.json)
-     - --output-csv (defaut: input/tableau_arks_numeros.csv)
-     - --manifest-root (defaut: manifest_iiif_process)
-     - --requests-per-minute (defaut: 5)
-     - --timeout-seconds (defaut: 15)
-     - --user-agent
-     - --force (re-telechargement des manifests existants)
+Parametres CLI principaux (defauts) :
+- --input                  input/arks_numeros.json
+- --output                 input/arks_numeros.json
+- --output-csv             input/tableau_arks_numeros.csv
+- --manifest-root          manifest_iiif_process
+- --requests-per-minute    4            (defaut script ; en production : 1/min)
+- --timeout-seconds        30
+- --cb-threshold           3
+- --cb-sleep-seconds       600
+- --jitter-seconds         1.5          (jitter aleatoire pour eviter le burst regulier)
+- --save-every             25           (sauvegarde du JSON tous les N items)
+- --user-agent             "Mozilla/5.0 ... Firefox/150.0"  (UA natif Firefox)
+- --force                  (re-telechargement des manifests existants)
 
-2. Chargement du JSON d'entree et resolution de items[].
-   - Cas standard: items[] existe deja.
-   - Cas legacy: reconstruction de items[] depuis listes numeros/urls si present.
+Cadence empirique (mai 2026) :
+- La documentation BnF (https://api.bnf.fr/fr/node/232) ne specifie pas de limite
+  explicite pour l'endpoint manifest IIIF.
+- Mesures sur ~9000 items : burst d'environ 20 manifestes acceptes, puis throttle
+  dur (429 ou erreur 503). La cadence soutenable propre est de **1 req/min**.
+- A 4 req/min : ~30 % d'erreurs 429 apres 200 manifestes.
+- A 3 req/min : 1-2 cooldowns par centaine d'items.
+- A 1 req/min : 0 erreur 429 sur 5500 manifestes consecutifs (validation 22-26/05).
 
-3. Initialisation HTTP robuste.
-   - requests.Session + retry sur 429/5xx.
-   - Rate limiter local (fenetre glissante 60s) a 5 req/min par defaut.
+Logique :
+1. Lecture de input/arks_numeros.json, resolution de items[].
+2. requests.Session avec Retry(total=0) (pas de retry urllib3 : tous les
+   re-essais passent par le circuit breaker pour ne pas court-circuiter le
+   rate limiter).
+3. Rate limiter local en fenetre glissante (60s) + jitter aleatoire 0-1.5s avant
+   chaque requete.
+4. Pour chaque item :
+   - URL = https://gallica.bnf.fr/iiif/<issue_ark>/manifest.json
+   - manifest_path = manifest_iiif_process/<revue_sanitized>/<numero_id_sanitized>.manifest.json
+   - Si le manifest existe deja et pas --force : skip ("skipped" dans les compteurs).
+   - Sinon : GET avec timeout, raise_for_status, ecriture sur disque.
+5. Mise a jour item : manifest_url, manifest_path, status, error_*.
+6. Sauvegarde du JSON tous les --save-every items (et a la fin).
 
-4. Iteration sur chaque item.
-   - Lecture de numero_id, issue_ark, revue.
-   - Validation minimale des champs obligatoires.
-   - Normalisation de issue_ark vers "ark:/12148/...".
+Circuit breaker :
+- TRANSIENT_STATUS_CODES = (429, 500, 502, 503, 504)
+- Apres --cb-threshold echecs consecutifs : cooldown de --cb-sleep-seconds.
+- Les 404 et autres 4xx (sauf 429) sont consideres comme erreurs structurelles
+  (resource absente) : reportees mais ne declenchent pas le cooldown.
 
-5. Construction des chemins/URLs manifest.
-   - URL:
-     - https://gallica.bnf.fr/iiif/<issue_ark>/manifest.json
-   - Chemin local:
-     - manifest_iiif_process/<revue_sanitized>/<numero_id_sanitized>.manifest.json
-   - Ajout immediat dans item:
-     - manifest_url
-     - manifest_path
+Commande de production (1 req/min + watchdog) :
+  .venv/bin/python -u scripts/pipeline_manifest_iiif/scraping_manifest_gallica.py \
+      --input input/arks_numeros.json \
+      --output input/arks_numeros_with_manifests.json \
+      --output-csv input/tableau_arks_numeros_with_manifests.csv \
+      --manifest-root manifest_iiif_process \
+      --requests-per-minute 1
 
-6. Strategie idempotente locale.
-   - Si le manifest existe deja et pas --force:
-     - status = "ok"
-     - skip du telechargement.
-
-7. Telechargement du manifest si necessaire.
-   - Attente rate limiter.
-   - GET du manifest avec timeout.
-   - raise_for_status + parsing JSON.
-   - Ecriture du manifest sur disque.
-   - Mise a jour item:
-     - status = "ok"
-   - En cas d'erreur:
-     - status = "error"
-     - error_stage = "manifest_download" (ou autre stage manifest_*)
-     - error_code = code structure (ex: 429, timeout, value_error)
-     - error_message = message erreur.
-
-8. Ecriture des sorties enrichies.
-   - JSON:
-     - conserve items[]
-     - ajoute/maj manifest_collection (downloaded/existing/errors).
-   - CSV:
-     - revue,parent_ark_date,year,day_of_year,numero_id,issue_ark,precision,manifest_url,manifest_path,status,error_stage,error_code,error_message
-
-Commande d'execution type:
-- .venv/bin/python -u scripts/scraping_manifest_gallica.py --input input/arks_numeros.json --output input/arks_numeros.json --output-csv input/tableau_arks_numeros.csv --manifest-root manifest_iiif_process
+Un watchdog optionnel peut surveiller le log et tuer le run si trop de cooldowns
+ou de 429 : voir le snippet a la fin de ce document.
 
 
-ETAPE 3 - manifest IIIF -> images bitonales full (deja codee)
--------------------------------------------------------------
+ETAPE 2.5 - Analyse des pages et partition PDF / IIIF
+-----------------------------------------------------
 Script de reference:
-- scripts/scraping_images_gallica.py
+- scripts/pipeline_manifest_iiif/analyze_pages_and_partition.py
 
-Objectif:
-- Telecharger les pages image d'un numero, en bitonal full, puis passer au numero suivant.
+Objectif :
+- Extraire pages_total = nombre de canvases de chaque manifest IIIF.
+- Enrichir input/arks_numeros_with_manifests.json avec ce champ.
+- Proposer une partition PDF (gros numeros) / IIIF (petits numeros) au seuil donne.
+- Aucun appel reseau : lecture pure des fichiers manifest_iiif_process/.
 
-Entree:
-- input/arks_numeros.json (items enrichis avec issue_ark + manifest_path ou manifest_root)
+Parametres CLI principaux :
+- --input                  input/arks_numeros_with_manifests.json
+- --output                 input/arks_numeros_with_manifests.json (reecriture)
+- --output-pdf             input/arks_partition_pdf.json
+- --output-iiif            input/arks_partition_iiif.json
+- --manifest-root          manifest_iiif_process
+- --threshold              500 (valeur de production retenue)
 
-Sorties:
-- JSON enrichi: input/arks_numeros.json
-- CSV enrichi: input/tableau_arks_numeros.csv
-- Images:
-  - images_process/<revue>/<numero_id>/page_0001.jpg ...
+Logique :
+1. Pour chaque item du JSON : lecture du manifest local et extraction de pages_total :
+   - IIIF Presentation v2 : len(sequences[0].canvases)
+   - IIIF Presentation v3 : len(items)
+2. Ecriture du JSON enrichi.
+3. Affichage de statistiques de distribution (quartiles, percentiles, histogramme).
+4. Proposition de seuils candidats (100, 150, 200, 250, 300, 400, 500, 750, 1000)
+   avec, pour chacun : nombre de numeros qui basculent en PDF, total pages en PDF,
+   total pages en IIIF, temps estime IIIF a 4 img/min.
+5. Ecriture des deux JSON de partition au seuil retenu.
 
-Sous-etapes detaillees:
-1. Chargement de la configuration CLI.
-   - Parametres principaux:
-     - --input, --output, --output-csv
-     - --manifest-root (defaut: manifest_iiif_process)
-     - --image-root (defaut: images_process)
-     - --requests-per-minute (defaut: 5)
-     - --timeout-seconds
-     - --quality (defaut: bitonal)
-     - --format (defaut: jpg)
-     - --max-pages (0 = toutes)
-     - --force
+Distribution observee (8691 manifestes au 29/05/2026) :
+- Mediane : 20 pages
+- Moyenne : 102 pages
+- P90 : 464 pages, P95 : 638 pages
+- Distribution bimodale : 77 % des numeros < 50 pages (fascicules courts), puis un
+  creux entre 150 et 500 pages, puis ~9 % a 500-1000 pages (volumes annuels relies).
 
-2. Resolution du manifest par item.
-   - Priorite a item.manifest_path si present.
-   - Sinon fallback: <manifest_root>/<revue>/<numero_id>.manifest.json.
+Partition retenue (seuil 500) :
+- PDF (>= 500 p.) : 846 numeros (10 %), ~645 000 pages -> ~8 jours a 100 PDF/jour.
+- IIIF (< 500 p.) : 7845 numeros (90 %), ~239 000 pages -> ~42 jours a 4 img/min
+  (~33 jours a 5 img/min).
 
-3. Chargement/parsing du manifest.
-   - Lecture JSON locale.
-   - Verification sequences/canvases.
-   - En cas d'erreur:
-     - status = "error"
-     - error_stage = images_manifest_path|images_manifest_load|images_manifest_parse
-     - error_code / error_message renseignes.
-
-4. Construction des URLs image par page.
-   - Extraction de service.@id (ou fallback resource.@id).
-   - Construction URL:
-     - <service_id>/full/full/0/bitonal.jpg
-
-5. Telechargement page par page.
-   - Rate limit 5 req/min.
-   - Retry/backoff sur 429/5xx.
-   - Skip si fichier existe et taille > 0 (sauf --force).
-   - Ecriture dans images_process/<revue>/<numero_id>/page_XXXX.jpg.
-
-6. Mise a jour des compteurs item.
-   - images_total
-   - images_downloaded
-   - images_existing
-   - images_errors
-   - image_output_dir
-
-7. Normalisation d'erreurs (homogene avec etapes 1 et 2).
-   - status = ok|error
-   - error_stage
-   - error_code
-   - error_message
-
-8. Ecriture finale.
-   - JSON: maj items + images_collection + totaux.
-   - CSV: colonnes metier + manifest + images + status/error_*.
+Commande :
+  .venv/bin/python -u scripts/pipeline_manifest_iiif/analyze_pages_and_partition.py --threshold 500
 
 
-ETAPE 4 - Industrialisation / automatisation
---------------------------------------------
-Objectif:
-- Orchestrer les 3 etapes avec reprise et idempotence.
-
+ETAPE 3 - manifest IIIF -> images bitonales full
+------------------------------------------------
 Script de reference:
-- scripts/run_pipeline_gallica.py
+- scripts/pipeline_manifest_iiif/scraping_images_gallica.py
 
-Entrees principales:
-- input/arks_revues.json
-- input/arks_numeros.json
-- input/tableau_arks_numeros.csv
+Objectif :
+- Pour chaque numero de la partition IIIF (< seuil), telecharger les images
+  bitonales "full" page par page via l'IIIF Image API.
 
-Sorties principales:
-- manifest_iiif_process/state.json
-- input/arks_numeros.json (mis a jour a chaque etape)
-- input/tableau_arks_numeros.csv (mis a jour a chaque etape)
-- manifest_iiif_process/<revue>/<numero_id>.manifest.json
-- images_process/<revue>/<numero_id>/page_XXXX.jpg
+Entree :
+- input/arks_partition_iiif.json (sous-ensemble produit par analyze_pages_and_partition)
+- Manifests deja sur disque dans manifest_iiif_process/
 
-Sous-etapes detaillees:
-1. Charger l'etat de pipeline.
-   - Lecture de manifest_iiif_process/state.json.
-   - Initialisation si absent:
-     - revues {}
-     - runs []
+Sorties :
+- Images : images_process/<revue>/<numero_id>/page_0001.jpg ...
+- JSON enrichi avec compteurs images.
 
-2. Determiner les revues a retraiter pour l'etape 1.
-   - Pour chaque revue de input/arks_revues.json:
-     - traiter si revue absente de state
-     - ou statut precedent != done
-     - ou ARK modifie
-     - ou --force-step1.
+Parametres CLI principaux (defauts) :
+- --input                  input/arks_numeros.json
+- --output                 input/arks_numeros.json
+- --output-csv             input/tableau_arks_numeros.csv
+- --manifest-root          manifest_iiif_process
+- --image-root             images_process
+- --requests-per-minute    4            (limite documentee BnF : 5/min en full)
+- --timeout-seconds        30
+- --jitter-seconds         1.5
+- --cb-threshold           5
+- --cb-sleep-seconds       600
+- --cb-max-cooldowns       2
+- --quality                bitonal      (choix : bitonal | gray | color)
+- --format                 jpg
+- --max-pages              0            (0 = toutes les pages)
+- --user-agent             "Mozilla/5.0 ... Firefox/150.0"
+- --force
 
-3. Executer l'etape 1 uniquement pour les revues en attente.
-   - Generation d'un JSON temporaire avec les seules revues a traiter.
-   - Appel de scripts/scraping_arks_numeros_gallica.py.
-   - Merge des items produits avec input/arks_numeros.json existant:
-     - remplacement uniquement pour les revues retraitees.
-   - Mise a jour de state["revues"][revue] avec:
-     - status done|error
-     - ark
-     - updated_at
-     - last_error
+Cadence empirique :
+- Documentation BnF "phase transitoire" : 5 req/min maximum sur l'IIIF Image API en
+  mode full ou taille > 1000 px, bande passante 832 Ko/s par client.
+- Benchmark realise en mai 2026 (180s par palier) :
+  - 4 req/min : 0 % 429
+  - 6 req/min : 28 % 429
+- Production : on s'aligne sur **4 req/min** (marge de securite vs. la limite
+  documentee a 5).
 
-4. Executer l'etape 2 seulement si necessaire.
-   - Comptage des manifests manquants.
-   - Si aucun manifest manquant (et pas --force-manifests): skip.
-   - Sinon appel de scripts/scraping_manifest_gallica.py.
+Logique :
+1. Resolution du manifest par item (priorite manifest_path, sinon fallback).
+2. Parsing du manifest : extraction des canvases (v2 ou v3).
+3. Pour chaque canvas : extraction de service.@id (ou fallback resource.@id) et
+   construction de l'URL <service_id>/full/full/0/bitonal.jpg.
+4. Telechargement avec rate limit 4/min + jitter, retry/backoff sur 429/5xx,
+   skip si fichier existe et taille > 0 (sauf --force).
+5. Maj des compteurs item : images_total, images_downloaded, images_existing,
+   images_errors, image_output_dir.
 
-5. Executer l'etape 3 seulement si necessaire.
-   - Comptage des numeros encore incomplets en images.
-   - Si aucun numero restant (et pas --force-images): skip.
-   - Sinon appel de scripts/scraping_images_gallica.py.
+Commande :
+  .venv/bin/python -u scripts/pipeline_manifest_iiif/scraping_images_gallica.py \
+      --input input/arks_partition_iiif.json \
+      --requests-per-minute 4
 
-6. Journalisation et reprise.
-   - Chaque execution est enregistree dans state["runs"] avec:
-     - started_at
-     - finished_at
-     - step1_rc / step2_rc / step3_rc
-     - status final done|error
-   - Tous les outputs des scripts sont streames en console.
 
-Regles anti-repetition effectivement implementees:
-1. Etape 1:
-   - ne relance pas les revues deja done avec meme ARK (sauf --force-step1).
-2. Etape 2:
-   - skip si manifest deja present (sauf --force-manifests).
-3. Etape 3:
-   - skip si images deja completes (sauf --force-images).
-   - dans le script image, skip fichier page deja present et non vide (sauf --force).
+ETAPE 4 - Orchestrateur historique (peu utilise depuis la partition)
+--------------------------------------------------------------------
+Script de reference:
+- scripts/pipeline_manifest_iiif/run_pipeline_gallica.py
 
-Parametres CLI utiles de l'orchestrateur:
-- --revues-input
-- --numeros-json
-- --numeros-csv
-- --manifest-root
-- --image-root
-- --state-file
-- --issues-rpm (defaut 10)
-- --manifest-rpm (defaut 5)
-- --image-rpm (defaut 5)
-- --force-step1
-- --force-manifests
-- --force-images
+Cet orchestrateur a ete concu pour enchainer les 3 etapes (revues -> manifestes ->
+images) avec reprise et idempotence. Depuis la mise en place de la partition au
+seuil 500, on l'utilise rarement : on prefere lancer chaque etape isolement avec
+ses propres cadences, et inserer entre 2 et 3 le script de partition.
+
+Parametres CLI principaux (defauts) :
+- --revues-input           input/arks_revues.json
+- --numeros-json           input/arks_numeros.json
+- --numeros-csv            input/tableau_arks_numeros.csv
+- --manifest-root          manifest_iiif_process
+- --image-root             images_process
+- --state-file             manifest_iiif_process/state.json
+- --issues-rpm             10
+- --manifest-rpm           5
+- --image-rpm              5
+- --step{1,2,3}-cb-threshold       5
+- --step{1,2,3}-cb-sleep-seconds   600
+- --timeout-manifest       15
+- --timeout-image          20
+- --quality                bitonal
+- --format                 jpg
+- --max-pages              0
+- --resume                 True
+- --force-step1 / --force-manifests / --force-images
 - --disable-step1 / --disable-step2 / --disable-step3
 
-Commande d'execution type:
-- .venv/bin/python -u scripts/run_pipeline_gallica.py --revues-input input/arks_revues.json --numeros-json input/arks_numeros.json --numeros-csv input/tableau_arks_numeros.csv --manifest-root manifest_iiif_process --image-root images_process
+NOTE : les defauts de cadence de cet orchestrateur (manifest-rpm 5, image-rpm 5)
+sont historiques et ne refletent plus la cadence soutenable empirique du manifest
+(1/min). En usage actuel, lancer les sous-scripts directement avec les cadences
+ajustees est plus fiable.
+
+
+Watchdog optionnel (etape 2 manifest)
+-------------------------------------
+Pour les longs runs (etape 2 manifest sur ~9000 items, ~6 jours a 1/min), un
+watchdog en bash peut surveiller le log et tuer le run si Gallica throttle trop.
+
+Exemple (a placer dans /tmp/iiif_watchdog.sh, executable et lance en background) :
+
+  #!/bin/bash
+  LOG=/tmp/iiif_step2_full.log
+  WLOG=/tmp/iiif_watchdog.log
+  CHECK_INTERVAL=300
+  MAX_CB_COOLDOWNS=10
+  MAX_429=150
+
+  ts() { date "+%Y-%m-%d %H:%M:%S"; }
+
+  echo "[$(ts)] watchdog demarre - cb>=${MAX_CB_COOLDOWNS} ou 429>=${MAX_429}" >> "$WLOG"
+
+  while true; do
+    sleep "$CHECK_INTERVAL"
+    if ! pgrep -f scraping_manifest_gallica.py >/dev/null 2>&1; then
+      echo "[$(ts)] process absent -> watchdog s'arrete." >> "$WLOG"; exit 0
+    fi
+    [ -f "$LOG" ] || { echo "[$(ts)] log absent" >> "$WLOG"; continue; }
+    cb=$(grep -cF '] Sleeping ' "$LOG")
+    err429=$(grep -cF 'kind=429' "$LOG")
+    prog=$(grep -F '[INFO][progress]' "$LOG" | tail -1)
+    echo "[$(ts)] cb=${cb} err429=${err429} | ${prog}" >> "$WLOG"
+    if [ "${cb:-0}" -ge "$MAX_CB_COOLDOWNS" ] || [ "${err429:-0}" -ge "$MAX_429" ]; then
+      echo "[$(ts)] SEUIL DEPASSE -> ARRET" >> "$WLOG"
+      pkill -TERM -f scraping_manifest_gallica.py
+      sleep 5
+      pkill -KILL -f scraping_manifest_gallica.py 2>/dev/null
+      exit 1
+    fi
+  done
 
 
 Notes transverses
 -----------------
-- Toujours utiliser HTTPS.
-- Garder un User-Agent explicite.
-- Respecter strictement les limites de l'API Gallica et traiter 429 proprement.
-- Eviter les chemins absolus dans le code; preferer des chemins relatifs configurables.
-- Conserver des sorties reproductibles (JSON/CSV + logs).
+- Toujours HTTPS.
+- L'endpoint manifest IIIF est plus strict que l'endpoint Image (empirique).
+  Diagnostic : un run de scraping de manifestes a 4/min se faisait throttler
+  pendant qu'un benchmark Image API a 4/min restait clean en parallele.
+- Le format des manifestes Gallica est principalement IIIF Presentation v2
+  (sequences[0].canvases), parfois v3 (items).
+- Sur les ConnectionError (reseau coupe) : le scraper logue et incremente le
+  circuit breaker comme pour un 5xx, sans crasher. La streak se reset des qu'une
+  requete reussit.

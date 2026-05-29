@@ -1,6 +1,7 @@
 import argparse
 import csv
 import json
+import random
 import re
 import time
 from collections import deque
@@ -17,8 +18,9 @@ NON_ALNUM_PATTERN = re.compile(r"[^a-zA-Z0-9_.-]+")
 
 
 class RateLimiter:
-    def __init__(self, requests_per_minute: int) -> None:
+    def __init__(self, requests_per_minute: int, jitter_seconds: float = 1.5) -> None:
         self.requests_per_minute = max(1, requests_per_minute)
+        self.jitter_seconds = max(0.0, jitter_seconds)
         self.window_seconds = 60.0
         self.timestamps = deque()
 
@@ -33,59 +35,89 @@ class RateLimiter:
             now = time.monotonic()
             while self.timestamps and (now - self.timestamps[0]) > self.window_seconds:
                 self.timestamps.popleft()
+        if self.jitter_seconds > 0:
+            time.sleep(random.uniform(0, self.jitter_seconds))
         self.timestamps.append(time.monotonic())
 
 
 class CircuitBreaker429:
+    """Cooldown apres N erreurs consecutives transitoires (429, 5xx, reset, timeout).
+
+    Les 404 et autres 4xx (sauf 429) sont consideres comme erreurs structurelles
+    (resource absente) et ne declenchent pas le cooldown - elles sont juste
+    reportees et n'augmentent pas le compteur."""
+
+    TRANSIENT_STATUS_CODES = (429, 500, 502, 503, 504)
+
     def __init__(self, threshold: int, sleep_seconds: int) -> None:
         self.threshold = max(1, threshold)
         self.sleep_seconds = max(1, sleep_seconds)
-        self.consecutive_429 = 0
+        self.consecutive_429 = 0  # nom historique, sert au log de progression
 
-    @staticmethod
-    def is_429_exception(exc: Exception) -> bool:
+    @classmethod
+    def is_transient_exception(cls, exc: Exception) -> tuple[bool, str]:
+        """Retourne (counts_toward_breaker, kind_label)."""
         if isinstance(exc, requests.HTTPError) and getattr(exc, "response", None) is not None:
-            return exc.response.status_code == 429
+            code = exc.response.status_code
+            if code in cls.TRANSIENT_STATUS_CODES:
+                return True, str(code)
+            return False, str(code)  # 404, 4xx non-429 = non transient
         if isinstance(exc, requests.exceptions.RetryError):
-            return "429" in str(exc)
-        return False
+            msg = str(exc)
+            for code in cls.TRANSIENT_STATUS_CODES:
+                if str(code) in msg:
+                    return True, f"RetryError({code})"
+            return True, "RetryError"
+        if isinstance(exc, requests.Timeout):
+            return True, "Timeout"
+        if isinstance(exc, requests.ConnectionError):
+            return True, "ConnectionError"
+        return False, exc.__class__.__name__
 
     def record_success(self) -> None:
         if self.consecutive_429 > 0:
             print(
-                f"[INFO][circuit_breaker] reset consecutive_429={self.consecutive_429} after success"
+                f"[INFO][circuit_breaker] reset consecutive_failures={self.consecutive_429} after success",
+                flush=True,
             )
         self.consecutive_429 = 0
 
     def record_failure(self, exc: Exception, context: str) -> None:
-        if not self.is_429_exception(exc):
+        is_transient, kind = self.is_transient_exception(exc)
+        if not is_transient:
             self.consecutive_429 = 0
             return
         self.consecutive_429 += 1
         print(
-            f"[WARN][circuit_breaker] 429 streak={self.consecutive_429}/{self.threshold} "
-            f"context={context}"
+            f"[WARN][circuit_breaker] failures streak={self.consecutive_429}/{self.threshold} "
+            f"kind={kind} context={context}",
+            flush=True,
         )
         if self.consecutive_429 >= self.threshold:
             print(
-                f"[WARN][circuit_breaker] Sleeping {self.sleep_seconds}s after {self.consecutive_429} consecutive 429"
+                f"[WARN][circuit_breaker] Sleeping {self.sleep_seconds}s after "
+                f"{self.consecutive_429} consecutive transient failures (last={kind})",
+                flush=True,
             )
             time.sleep(self.sleep_seconds)
             self.consecutive_429 = 0
 
 
 def build_session(user_agent: str) -> requests.Session:
-    retry = Retry(
-        total=5,
-        connect=5,
-        read=5,
-        backoff_factor=1.0,
-        status_forcelist=(429, 500, 502, 503, 504),
-        allowed_methods=frozenset(["GET"]),
-    )
+    # total=0 : aucun retry automatique. Les retries urllib3 ne passent pas par le
+    # RateLimiter ; en cas de 429 ils declenchaient 3 requetes rapprochees qui
+    # entretenaient le throttle Gallica. Un 429 remonte desormais immediatement
+    # vers le circuit breaker ; les numeros en erreur sont repris au prochain passage.
+    retry = Retry(total=0)
     adapter = HTTPAdapter(max_retries=retry)
     session = requests.Session()
-    session.headers.update({"User-Agent": user_agent})
+    session.headers.update({
+        "User-Agent": user_agent,
+        "Accept": "application/json, application/ld+json, */*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.5",
+        "Referer": "https://gallica.bnf.fr/",
+        "DNT": "1",
+    })
     session.mount("https://", adapter)
     session.mount("http://", adapter)
     return session
@@ -212,13 +244,20 @@ def main() -> None:
         default="input/tableau_arks_numeros.csv",
         help="CSV de sortie enrichi avec les infos de manifest.",
     )
-    parser.add_argument("--requests-per-minute", type=int, default=5)
-    parser.add_argument("--timeout-seconds", type=int, default=15)
-    parser.add_argument("--cb-threshold", type=int, default=5)
+    parser.add_argument("--requests-per-minute", type=int, default=4)
+    parser.add_argument("--timeout-seconds", type=int, default=30)
+    parser.add_argument("--cb-threshold", type=int, default=3)
     parser.add_argument("--cb-sleep-seconds", type=int, default=600)
+    parser.add_argument("--jitter-seconds", type=float, default=1.5)
+    parser.add_argument(
+        "--save-every",
+        type=int,
+        default=25,
+        help="Sauvegarde JSON/CSV partielle et log de progression toutes les N iterations (0 = desactive).",
+    )
     parser.add_argument(
         "--user-agent",
-        default="memoire-gallica-scraper/1.0 (+contact-local)",
+        default="Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:150.0) Gecko/20100101 Firefox/150.0",
         help="User-Agent envoye a Gallica.",
     )
     parser.add_argument(
@@ -236,14 +275,54 @@ def main() -> None:
     payload = load_payload(input_path)
     items = ensure_items(payload)
     session = build_session(args.user_agent)
-    limiter = RateLimiter(args.requests_per_minute)
+    limiter = RateLimiter(args.requests_per_minute, args.jitter_seconds)
     circuit_breaker = CircuitBreaker429(args.cb_threshold, args.cb_sleep_seconds)
 
     success_count = 0
     skipped_count = 0
     error_count = 0
 
-    for item in items:
+    start_time = time.monotonic()
+    total_items = len(items)
+
+    def update_summary_payload() -> None:
+        payload["total_issues"] = sum(
+            1 for it in items if str(it.get("issue_ark", "")).strip()
+        )
+        payload["total_errors"] = sum(
+            1 for it in items if str(it.get("status", "")).strip() == "error"
+        )
+        payload["total_events"] = len(items)
+        payload["manifest_collection"] = {
+            "requests_per_minute": args.requests_per_minute,
+            "manifest_root": str(manifest_root.as_posix()),
+            "downloaded": success_count,
+            "existing": skipped_count,
+            "errors": error_count,
+        }
+        payload.pop("numeros", None)
+        payload.pop("urls", None)
+
+    def persist_partial(processed: int) -> None:
+        update_summary_payload()
+        save_json(output_path, payload)
+        save_csv(output_csv_path, items)
+        elapsed_min = (time.monotonic() - start_time) / 60.0
+        rate_per_min = success_count / elapsed_min if elapsed_min > 0 else 0.0
+        remaining = max(0, total_items - processed)
+        eta_min = remaining / rate_per_min if rate_per_min > 0 else 0.0
+        print(
+            f"[INFO][progress] processed={processed}/{total_items} "
+            f"downloaded={success_count} skipped={skipped_count} errors={error_count} "
+            f"rate={rate_per_min:.2f}req/min elapsed={elapsed_min:.1f}min eta_min={eta_min:.0f} "
+            f"cb_streak={circuit_breaker.consecutive_429}/{circuit_breaker.threshold}",
+            flush=True,
+        )
+
+    for idx, item in enumerate(items):
+        if args.save_every > 0 and idx > 0 and idx % args.save_every == 0:
+            persist_partial(idx)
+
         item.pop("manifest_status", None)
         item.pop("manifest_error", None)
 
@@ -333,21 +412,7 @@ def main() -> None:
             )
             error_count += 1
 
-    payload["total_issues"] = sum(
-        1 for it in items if str(it.get("issue_ark", "")).strip()
-    )
-    payload["total_errors"] = sum(1 for it in items if str(it.get("status", "")).strip() == "error")
-    payload["total_events"] = len(items)
-    payload["manifest_collection"] = {
-        "requests_per_minute": args.requests_per_minute,
-        "manifest_root": str(manifest_root.as_posix()),
-        "downloaded": success_count,
-        "existing": skipped_count,
-        "errors": error_count,
-    }
-    payload.pop("numeros", None)
-    payload.pop("urls", None)
-
+    update_summary_payload()
     save_json(output_path, payload)
     save_csv(output_csv_path, items)
     print(f"Termine: {success_count} manifests telecharges, {skipped_count} deja presents, {error_count} erreurs")

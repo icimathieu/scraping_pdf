@@ -262,8 +262,22 @@ def load_cookies(cookies_file: str) -> List[http.cookiejar.Cookie]:
     if not cookie_path.exists():
         log(f"[WARN][pdf] Fichier cookies introuvable: {cookie_path}")
         return []
+    # Fichier vide ou trop petit → on continue sans cookies plutot que de crash.
+    try:
+        size = cookie_path.stat().st_size
+    except OSError:
+        size = 0
+    if size == 0:
+        log(f"[WARN][pdf] Fichier cookies vide: {cookie_path}. Run sans cookies "
+            "(ALTCHA pas pre-validee, risque de captcha en cours de route).")
+        return []
     jar = http.cookiejar.MozillaCookieJar()
-    jar.load(str(cookie_path), ignore_discard=True, ignore_expires=True)
+    try:
+        jar.load(str(cookie_path), ignore_discard=True, ignore_expires=True)
+    except http.cookiejar.LoadError as exc:
+        log(f"[WARN][pdf] Fichier cookies malforme ({exc}). Run sans cookies "
+            "(ALTCHA pas pre-validee, risque de captcha en cours de route).")
+        return []
     cookies = list(jar)
 
     # Check d'expiration : alerte si altcha_pass est expire ou expirera bientot.
@@ -490,19 +504,24 @@ def wait_for_download(
     poll_interval_seconds: float,
     progress_log_seconds: int,
     stalled_timeout_seconds: int = 120,
+    expected_ark: str = "",
 ) -> Path:
     """Attend qu'un PDF apparaisse dans download_dir.
 
+    Filtrage: seuls les fichiers contenant `expected_ark` dans leur nom
+    sont consideres comme appartenant a l'item courant. Les .part orphelins
+    d'autres items (laisses par des downloads precedents) sont ignores.
+
     Strategie:
-    - Tant que le .part grossit (le download progresse), on n'abandonne pas,
-      meme au-dela du download_timeout_seconds. Logique : un PDF de 200 Mo
-      sur une connexion lente peut depasser le timeout par defaut.
-    - On abandonne uniquement si le .part est STABLE (taille inchangee)
-      depuis stalled_timeout_seconds (defaut 120s = 2 min) : ca signifie
-      que la connexion a ete dropee par le serveur.
-    - Le download_timeout_seconds reste un plafond global tant que rien
-      n'est detecte (ni .part, ni nouveau fichier).
+    - Tant que LE .part DE CET ARK grossit, on n'abandonne pas, meme au-dela
+      du download_timeout_seconds.
+    - Abandon si le .part de cet ARK est stable depuis stalled_timeout_seconds.
+    - Succes des qu'un .pdf non vide contenant l'ARK existe et qu'aucun .part
+      de cet ARK n'est plus actif.
     """
+    def matches_ark(path: Path) -> bool:
+        return (not expected_ark) or (expected_ark in path.name)
+
     existing_set = set(existing_files)
     deadline_global = time.monotonic() + download_timeout_seconds
     observed_candidate = None
@@ -510,30 +529,31 @@ def wait_for_download(
     stable_count = 0
     last_progress_log = time.monotonic()
 
-    # Suivi du progres .part pour detecter les downloads stalles vs actifs
-    last_part_total_size = 0
+    # Suivi du progres du .part de l'item courant (filtre par ARK)
+    last_part_size_for_ark = 0
     last_part_progress_at = time.monotonic()
 
     while True:
         now = time.monotonic()
-        part_files = [path for path in download_dir.glob("*.part") if path.is_file()]
+        all_part_files = [p for p in download_dir.glob("*.part") if p.is_file()]
+        part_files = [p for p in all_part_files if matches_ark(p)]
         current_files = list_download_candidates(download_dir)
-        new_files = [path for path in current_files if path not in existing_set]
+        new_files = [p for p in current_files if p not in existing_set and matches_ark(p)]
 
-        # Taille totale des .part (nouveau)
-        part_total_size = 0
+        # Taille totale des .part de l'item courant
+        part_size_for_ark = 0
         part_sizes_log = []
         for p in part_files:
             try:
                 s = p.stat().st_size
-                part_total_size += s
+                part_size_for_ark += s
                 part_sizes_log.append(f"{p.name}:{s}")
             except OSError:
                 part_sizes_log.append(f"{p.name}:?")
 
-        # Reset deadline si le .part progresse (= download actif)
-        if part_total_size > last_part_total_size:
-            last_part_total_size = part_total_size
+        # Reset deadline si LE .part de l'ARK courant progresse
+        if part_size_for_ark > last_part_size_for_ark:
+            last_part_size_for_ark = part_size_for_ark
             last_part_progress_at = now
 
         if progress_log_seconds > 0 and (now - last_progress_log) >= progress_log_seconds:
@@ -544,15 +564,17 @@ def wait_for_download(
                 except OSError:
                     new_sizes.append(f"{path.name}:?")
             stall_age = now - last_part_progress_at
+            orphan_count = len(all_part_files) - len(part_files)
+            orphan_suffix = f" orphans={orphan_count}" if orphan_count else ""
             log(
-                f"[INFO][pdf][download_wait] "
+                f"[INFO][pdf][download_wait] ark={expected_ark or '?'} "
                 f"part={part_sizes_log or ['none']} "
                 f"new_files={new_sizes or ['none']} "
-                f"stall_age={stall_age:.0f}s"
+                f"stall_age={stall_age:.0f}s{orphan_suffix}"
             )
             last_progress_log = now
 
-        # Cas succes: un fichier final non-.part stable
+        # Cas succes: un fichier final non-.part stable, contenant l'ARK
         if new_files and not part_files:
             candidate = max(new_files, key=lambda path: path.stat().st_mtime)
             size = candidate.stat().st_size
@@ -565,7 +587,7 @@ def wait_for_download(
             if stable_count >= 2:
                 return candidate
 
-        # Cas abandon: .part stalle depuis trop longtemps (= connexion dropee)
+        # Cas abandon: .part de l'ARK stalle depuis trop longtemps
         if part_files and (now - last_part_progress_at) > stalled_timeout_seconds:
             raise TimeoutError(
                 f"download_stalled: .part inchange depuis {now - last_part_progress_at:.0f}s "
@@ -649,9 +671,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", default="input/arks_numeros.json")
     parser.add_argument("--output-csv", default="input/tableau_arks_numeros.csv")
     parser.add_argument("--pdf-root", default="pdf_process")
-    parser.add_argument("--requests-per-minute", type=float, default=0.3)
-    parser.add_argument("--cb-threshold", type=int, default=3)
-    parser.add_argument("--cb-sleep-seconds", type=int, default=600)
+    parser.add_argument("--requests-per-minute", type=float, default=0.2)
+    parser.add_argument("--cb-threshold", type=int, default=2)
+    parser.add_argument("--cb-sleep-seconds", type=int, default=3600)
     parser.add_argument("--cb-max-cooldowns", type=int, default=2)
     parser.add_argument("--page-timeout-seconds", type=int, default=60)
     parser.add_argument("--timeout-seconds", type=int, default=1800)
@@ -734,6 +756,19 @@ def main() -> None:
     )
 
     download_dir.mkdir(parents=True, exist_ok=True)
+
+    # Cleanup des .part orphelins de runs precedents : un nouveau Firefox ne les
+    # reprendra pas (nouveau profil temporaire), et leur presence perturbait la
+    # detection de fin de download (cf. bug de filtrage par ARK).
+    orphan_parts = list(download_dir.glob("*.part"))
+    if orphan_parts:
+        log(f"[INFO][pdf] Cleanup au demarrage: {len(orphan_parts)} .part orphelin(s) supprime(s)")
+        for p in orphan_parts:
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
     options = build_firefox_options(download_dir, headless, firefox_binary, args.user_agent)
     service = Service(str(geckodriver_path))
 
@@ -876,6 +911,12 @@ def main() -> None:
                     click_locator=click_locator,
                     click_timeout_seconds=args.click_timeout_seconds,
                 )
+                # Extraire l'ARK court (ex: bpt6k120758k) pour filtrer les
+                # .part / .pdf de l'item courant et ignorer les orphelins.
+                short_ark = ""
+                m_ark = re.search(r"(bpt6k[a-zA-Z0-9]+|btv1b[a-zA-Z0-9]+)", issue_ark)
+                if m_ark:
+                    short_ark = m_ark.group(1)
                 downloaded_file = wait_for_download(
                     driver=driver,
                     download_dir=download_dir,
@@ -884,6 +925,7 @@ def main() -> None:
                     poll_interval_seconds=args.poll_interval_seconds,
                     progress_log_seconds=args.progress_log_seconds,
                     stalled_timeout_seconds=args.stalled_timeout_seconds,
+                    expected_ark=short_ark,
                 )
                 raise_for_non_pdf_payload(downloaded_file)
                 output_dir.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,7 @@
 import argparse
 import csv
 import json
+import random
 import re
 import time
 from collections import deque
@@ -15,9 +16,13 @@ NON_ALNUM_PATTERN = re.compile(r"[^a-zA-Z0-9_.-]+")
 
 
 class RateLimiter:
-    def __init__(self, requests_per_minute: int) -> None:
+    """Limiteur en fenetre glissante avec jitter optionnel pour evader la
+    detection de pattern regulier cote serveur."""
+
+    def __init__(self, requests_per_minute: int, jitter_seconds: float = 1.5) -> None:
         self.requests_per_minute = max(1, requests_per_minute)
         self.window_seconds = 60.0
+        self.jitter_seconds = max(0.0, jitter_seconds)
         self.timestamps = deque()
 
     def wait_turn(self) -> None:
@@ -31,14 +36,27 @@ class RateLimiter:
             now = time.monotonic()
             while self.timestamps and (now - self.timestamps[0]) > self.window_seconds:
                 self.timestamps.popleft()
+        # Jitter aleatoire pour eviter le pattern regulier exact (15.000s 15.000s...)
+        if self.jitter_seconds > 0:
+            time.sleep(random.uniform(0, self.jitter_seconds))
         self.timestamps.append(time.monotonic())
 
 
+class CircuitBreakerStop(RuntimeError):
+    pass
+
+
 class CircuitBreaker429:
-    def __init__(self, threshold: int, sleep_seconds: int) -> None:
+    """Compte toutes les erreurs consecutives (pas seulement les 429).
+    Apres `threshold` echecs : sleep `sleep_seconds`. Apres `max_cooldowns`
+    sleeps : raise CircuitBreakerStop pour arret definitif."""
+
+    def __init__(self, threshold: int, sleep_seconds: int, max_cooldowns: int = 2) -> None:
         self.threshold = max(1, threshold)
         self.sleep_seconds = max(1, sleep_seconds)
-        self.consecutive_429 = 0
+        self.max_cooldowns = max(1, max_cooldowns)
+        self.consecutive_failures = 0
+        self.cooldowns_used = 0
 
     @staticmethod
     def is_429_exception(exc: Exception) -> bool:
@@ -49,41 +67,57 @@ class CircuitBreaker429:
         return False
 
     def record_success(self) -> None:
-        if self.consecutive_429 > 0:
+        if self.consecutive_failures > 0:
             print(
-                f"[INFO][circuit_breaker] reset consecutive_429={self.consecutive_429} after success"
+                f"[INFO][circuit_breaker] reset consecutive_failures={self.consecutive_failures} after success"
             )
-        self.consecutive_429 = 0
+        self.consecutive_failures = 0
 
     def record_failure(self, exc: Exception, context: str) -> None:
-        if not self.is_429_exception(exc):
-            self.consecutive_429 = 0
-            return
-        self.consecutive_429 += 1
+        self.consecutive_failures += 1
+        is_throttle = self.is_429_exception(exc)
+        kind = "429" if is_throttle else exc.__class__.__name__
         print(
-            f"[WARN][circuit_breaker] 429 streak={self.consecutive_429}/{self.threshold} "
-            f"context={context}"
+            f"[WARN][circuit_breaker] failures streak={self.consecutive_failures}/{self.threshold} "
+            f"kind={kind} context={context}"
         )
-        if self.consecutive_429 >= self.threshold:
+        if self.consecutive_failures >= self.threshold:
+            if self.cooldowns_used >= self.max_cooldowns:
+                raise CircuitBreakerStop(
+                    f"circuit_breaker_stop: {self.consecutive_failures} echecs consecutifs "
+                    f"malgre {self.cooldowns_used} cooldown(s); arret definitif."
+                )
             print(
-                f"[WARN][circuit_breaker] Sleeping {self.sleep_seconds}s after {self.consecutive_429} consecutive 429"
+                f"[WARN][circuit_breaker] Sleeping {self.sleep_seconds}s after "
+                f"{self.consecutive_failures} consecutive failures "
+                f"(cooldown {self.cooldowns_used + 1}/{self.max_cooldowns})"
             )
             time.sleep(self.sleep_seconds)
-            self.consecutive_429 = 0
+            self.cooldowns_used += 1
+            self.consecutive_failures = 0
 
 
 def build_session(user_agent: str) -> requests.Session:
+    # Retry total=2 : visibilite reelle des 429 (avant : total=5 masquait
+    # 4 retries silencieux par 429 visible dans nos stats).
     retry = Retry(
-        total=5,
-        connect=5,
-        read=5,
+        total=2,
+        connect=3,
+        read=3,
         backoff_factor=1.0,
         status_forcelist=(429, 500, 502, 503, 504),
         allowed_methods=frozenset(["GET"]),
+        respect_retry_after_header=True,
     )
     adapter = HTTPAdapter(max_retries=retry)
     session = requests.Session()
-    session.headers.update({"User-Agent": user_agent})
+    session.headers.update({
+        "User-Agent": user_agent,
+        "Accept": "image/jpeg,image/png,image/*,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.5",
+        "Referer": "https://gallica.bnf.fr/",
+        "DNT": "1",
+    })
     session.mount("https://", adapter)
     session.mount("http://", adapter)
     return session
@@ -242,10 +276,14 @@ def main() -> None:
         default="images_process",
         help="Racine de sortie des images.",
     )
-    parser.add_argument("--requests-per-minute", type=int, default=5)
-    parser.add_argument("--timeout-seconds", type=int, default=20)
+    parser.add_argument("--requests-per-minute", type=int, default=4)
+    parser.add_argument("--timeout-seconds", type=int, default=30)
+    parser.add_argument("--jitter-seconds", type=float, default=1.5,
+        help="Jitter aleatoire ajoute apres chaque tick rate-limit, evite le pattern regulier exact.")
     parser.add_argument("--cb-threshold", type=int, default=5)
     parser.add_argument("--cb-sleep-seconds", type=int, default=600)
+    parser.add_argument("--cb-max-cooldowns", type=int, default=2,
+        help="Nombre max de pauses du circuit breaker avant arret definitif.")
     parser.add_argument("--quality", default="bitonal")
     parser.add_argument("--format", default="jpg")
     parser.add_argument(
@@ -256,8 +294,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--user-agent",
-        default="memoire-gallica-scraper/1.0 (+contact-local)",
-        help="User-Agent envoye a Gallica.",
+        default="Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:150.0) Gecko/20100101 Firefox/150.0",
+        help="User-Agent envoye a Gallica. Defaut: Firefox 150 macOS (UA realiste).",
     )
     parser.add_argument(
         "--force",
@@ -275,14 +313,19 @@ def main() -> None:
     payload = load_payload(input_path)
     items = ensure_items(payload)
     session = build_session(args.user_agent)
-    limiter = RateLimiter(args.requests_per_minute)
-    circuit_breaker = CircuitBreaker429(args.cb_threshold, args.cb_sleep_seconds)
+    limiter = RateLimiter(args.requests_per_minute, args.jitter_seconds)
+    circuit_breaker = CircuitBreaker429(
+        args.cb_threshold, args.cb_sleep_seconds, args.cb_max_cooldowns
+    )
 
     processed_ok = 0
     processed_error = 0
     skipped_prior_error = 0
+    stopped_by_cb_message = ""
 
     for item in items:
+        if stopped_by_cb_message:
+            break
         item.pop("images_error", None)
 
         # Conserver les erreurs structurantes des etapes precedentes.
@@ -405,6 +448,12 @@ def main() -> None:
                     raise ValueError("Contenu image vide")
                 image_file.write_bytes(content)
                 downloaded += 1
+            except CircuitBreakerStop as cb_exc:
+                stopped_by_cb_message = str(cb_exc)
+                print(f"[ERROR][step3][circuit_breaker_stop] {stopped_by_cb_message}")
+                if first_error is None:
+                    first_error = ("circuit_breaker_stop", stopped_by_cb_message)
+                break
             except Exception as exc:
                 errors += 1
                 if first_error is None:
@@ -460,6 +509,11 @@ def main() -> None:
     print(f"JSON mis a jour: {output_path}")
     print(f"CSV mis a jour: {output_csv_path}")
     print(f"Images: {image_root}")
+
+    if stopped_by_cb_message:
+        import sys
+        print(f"[ERROR][step3] Arret par circuit breaker: {stopped_by_cb_message}")
+        sys.exit(2)
 
 
 if __name__ == "__main__":

@@ -1,156 +1,149 @@
-# scraping_pdf — Gallica / IIIe République
+# scraping_pdf — collecte Gallica / IIIᵉ République (1870-1914)
 
-Scraping des revues scientifiques numérisées sur Gallica (période 1870‑1914) pour produire des images bitonales destinées à l'océrisation (OCR via Tesseract, repo séparé).
+Code de collecte automatique des **revues scientifiques de la IIIᵉ République numérisées sur Gallica (BnF)**, dans le cadre d'un mémoire de recherche en histoire. Le pipeline produit des images bitonales prêtes pour l'OCR (traité dans un dépôt séparé via Tesseract).
 
-## Structure du dossier
+> Le scraping respecte strictement les [conditions de réutilisation des données de la BnF](https://api.bnf.fr/fr/node/232) (en-tête `User-Agent` explicite, limitation du débit, gestion des 429). Aucune donnée d'authentification n'est versionnée ; le fichier `gallica.bnf.fr_cookies.txt` (cookies de session pour bypasser ALTCHA en étape 2) est gitignored.
+
+## Vue d'ensemble
+
+Le corpus cible : **45 revues**, **~9225 numéros** entre 1870 et 1914, soit **~884 000 pages** au total (estimation après scraping de 94 % des manifestes IIIF).
+
+Deux pipelines coexistent, complémentaires :
+
+| Pipeline | Source primaire | Sortie | Usage actuel |
+|---|---|---|---|
+| **PDF** (`scripts/pipeline_pdf/`) | `https://gallica.bnf.fr/{ark}.pdf` (téléchargement Selenium/Firefox) | PNG/TIFF bitonal | **Gros numéros (≥500 pages)** — environ 10 % des numéros mais 73 % du volume |
+| **IIIF** (`scripts/pipeline_manifest_iiif/`) | `https://gallica.bnf.fr/iiif/{ark}/manifest.json` + Image API en bitonal full | JPG bitonal | **Petits numéros (<500 pages)** — environ 90 % des numéros, 27 % du volume |
+
+La partition à 500 pages est calculée à partir des manifestes IIIF par `analyze_pages_and_partition.py` (script de répartition, ne fait aucune requête réseau). Le seuil tombe dans le creux d'une distribution bimodale : fascicules courts (<50 pages) vs. volumes annuels reliés (~500-1000 pages).
+
+## Installation rapide
+
+```bash
+git clone https://github.com/icimathieu/scraping_pdf.git
+cd scraping_pdf
+
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Dépendances système (non installées par pip) :
+
+| Binaire | Rôle | Installation macOS |
+|---|---|---|
+| Firefox | étape PDF (Selenium) | https://www.mozilla.org/firefox/ |
+| `geckodriver` | pilote Selenium pour Firefox | `brew install geckodriver` |
+| `poppler` | conversion PDF → images (`pdfinfo`, `pdftoppm`) | `brew install poppler` |
+
+Sur Linux : `apt install firefox-esr poppler-utils` puis [installer geckodriver](https://github.com/mozilla/geckodriver/releases).
+
+## Structure du dépôt
 
 ```
 scraping_pdf/
 ├── input/
-│   ├── arks_revues.json          # { nom_revue: ark_ou_url_perenne } — 52 revues cibles
-│   ├── arks_numeros.json         # items[] par numéro (ARK, pdf_path, images, status...)
-│   ├── tableau_arks_numeros.csv  # miroir CSV du JSON ci-dessus
-│   └── notices_revues.csv        # métadonnées bibliographiques (1 ligne par revue, pour le mémoire)
+│   ├── arks_revues.json                    # { nom_revue: ark_perenne } — entree primaire
+│   ├── arks_numeros.json                   # numeros enrichis (sortie etape 1)
+│   ├── arks_numeros_with_manifests.json    # numeros + manifestes IIIF + pages_total
+│   └── _tmp_pdf/                           # tampon Selenium pour Firefox (gitignored)
 ├── scripts/
-│   ├── pipeline_pdf/             # pipeline active (PDF → images)
-│   │   ├── run_pipeline_gallica_pdf.py       # orchestrateur (étapes 1+2+3, lance caffeinate)
-│   │   ├── scraping_arks_numeros_gallica_pdf.py  # étape 1 : revues → ARK numéros
-│   │   ├── selenium_scraping_pdf.py          # étape 2 : ARK numéro → PDF (Selenium/Firefox)
-│   │   └── scraping_pdf_to_images.py         # étape 3 : PDF → PNG/TIFF bitonal
-│   ├── pipeline_manifest_iiif/   # ancienne pipeline IIIF (abandonnée)
-│   ├── scraping_notices_revues.py   # extraction métadonnées notices Gallica → CSV
-│   └── scraping_pdfs_gallica.ipynb  # notebook exploratoire
-├── pdf_process/                  # sorties étape 2 (gitignore) : <revue>/<numero_id>/<numero_id>.pdf
-├── images_process/               # sorties étape 3 (gitignore) : <revue>/<numero_id>/page_XXXX.png
-├── manifest_iiif_process/        # état orchestrateur (state_pdf.json) + legacy manifests
-├── pipeline_pdf.md               # spécification langage naturel de la pipeline PDF (active)
-├── pipeline_manifest.md          # spécification de l'ancienne pipeline IIIF (référence)
-├── todo.md                       # état d'avancement par revue et par étape
-├── readme.md                     # ce fichier
-├── CLAUDE.md                     # conventions de commande (à lire avant CLI)
-└── .venv/                        # environnement Python (requests, selenium, pdf2image, Pillow)
+│   ├── pipeline_pdf/                       # pipeline PDF (numeros >= 500 pages)
+│   │   ├── run_pipeline_gallica_pdf.py     #   orchestrateur (etapes 1+2+3, lance caffeinate)
+│   │   ├── scraping_arks_numeros_gallica_pdf.py   # etape 1 : revues -> ARK numeros
+│   │   ├── selenium_scraping_pdf.py        #   etape 2 : ARK numero -> PDF (Selenium/Firefox)
+│   │   └── scraping_pdf_to_images.py       #   etape 3 : PDF -> PNG/TIFF bitonal
+│   ├── pipeline_manifest_iiif/             # pipeline IIIF (numeros < 500 pages)
+│   │   ├── run_pipeline_gallica.py         #   orchestrateur historique (peu utilise depuis la partition)
+│   │   ├── scraping_arks_numeros_gallica.py       # etape 1 : revues -> ARK numeros (variante)
+│   │   ├── scraping_manifest_gallica.py    #   etape 2 : ARK -> manifest.json IIIF
+│   │   ├── analyze_pages_and_partition.py  #   etape 2.5 : extrait pages_total + propose partition PDF/IIIF
+│   │   └── scraping_images_gallica.py      #   etape 3 : manifest -> page_XXXX.jpg bitonal full
+│   └── scraping_notices_revues.py          # metadonnees bibliographiques des revues (OAIRecord)
+├── pdf_process/                            # sorties pipeline PDF (gitignored)
+├── images_process/                         # sorties images (PDF→PNG ET IIIF→JPG) (gitignored)
+├── manifest_iiif_process/                  # manifestes IIIF + state_pdf.json (gitignored sauf state)
+├── pipeline_pdf.md                         # specification de la pipeline PDF
+├── pipeline_manifest.md                    # specification de la pipeline IIIF + partition
+├── CLAUDE.md                               # conventions de commande (pour usage Claude Code)
+├── requirements.txt                        # dependances Python pinnees
+├── readme.md                               # ce fichier
+└── LICENSE
 ```
 
-Les deux fichiers de spécification étape par étape sont à consulter en priorité :
+Les deux fichiers de spécification détaillent chaque étape :
+- [pipeline_pdf.md](pipeline_pdf.md) — pipeline PDF (gros numéros)
+- [pipeline_manifest.md](pipeline_manifest.md) — pipeline IIIF + partition de page (petits numéros)
 
-- [pipeline_pdf.md](pipeline_pdf.md) — pipeline actuelle (PDF puis conversion locale), la seule utilisée aujourd'hui.
-- [pipeline_manifest.md](pipeline_manifest.md) — pipeline IIIF historique (manifest → images full bitonal), gardée comme référence.
+## Pipeline PDF — usage
 
-## Pipeline PDF — commandes
-
-L'orchestrateur enchaîne les 3 étapes avec reprise/idempotence. La pipeline est **restartable** : chaque étape détecte ce qui reste à faire et saute ce qui est déjà fait. **`caffeinate -i` est lancé automatiquement** au démarrage sur macOS (subprocess lié au PID parent, meurt avec le run).
-
-### Lancer la pipeline complète
+L'orchestrateur enchaîne les 3 étapes (revues → numéros → PDF → images bitonales) avec **reprise et idempotence** : chaque étape détecte ce qui reste à faire. `caffeinate -i` est lancé automatiquement sur macOS pour empêcher la mise en veille du Mac pendant les longs runs.
 
 ```bash
+# Pipeline complete
 .venv/bin/python -u scripts/pipeline_pdf/run_pipeline_gallica_pdf.py \
   --delete-pdf-after-success
+
+# Etapes isolees
+.venv/bin/python -u scripts/pipeline_pdf/run_pipeline_gallica_pdf.py --disable-step2 --disable-step3
+.venv/bin/python -u scripts/pipeline_pdf/run_pipeline_gallica_pdf.py --disable-step1 --disable-step3
+.venv/bin/python -u scripts/pipeline_pdf/run_pipeline_gallica_pdf.py --disable-step1 --disable-step2 --delete-pdf-after-success
 ```
 
-Tous les chemins (`input/arks_revues.json`, `input/arks_numeros.json`, `pdf_process/`, `images_process/`) sont les défauts du script.
+Voir [pipeline_pdf.md](pipeline_pdf.md) pour les paramètres détaillés (cadences, timeouts, circuit breaker).
 
-### Étapes isolées
+## Pipeline IIIF — usage
+
+Les manifestes IIIF de tous les numéros sont d'abord récupérés (étape 2 manifest), puis `analyze_pages_and_partition.py` produit deux JSON de partition. Les images bitonales des petits numéros sont ensuite téléchargées via l'IIIF Image API.
 
 ```bash
-# Étape 1 seule (revues → ARK numéros)
-.venv/bin/python -u scripts/pipeline_pdf/run_pipeline_gallica_pdf.py \
-  --disable-step2 --disable-step3
+# Etape 2 manifest (1 req/min recommande pour respecter Gallica)
+.venv/bin/python -u scripts/pipeline_manifest_iiif/scraping_manifest_gallica.py \
+  --input input/arks_numeros.json \
+  --output input/arks_numeros_with_manifests.json \
+  --manifest-root manifest_iiif_process \
+  --requests-per-minute 1
 
-# Étape 2 seule (ARK → PDFs Selenium)
-.venv/bin/python -u scripts/pipeline_pdf/run_pipeline_gallica_pdf.py \
-  --disable-step1 --disable-step3
+# Partition PDF / IIIF a seuil 500 pages
+.venv/bin/python -u scripts/pipeline_manifest_iiif/analyze_pages_and_partition.py \
+  --threshold 500
 
-# Étape 3 seule (PDF → images bitonales)
-.venv/bin/python -u scripts/pipeline_pdf/run_pipeline_gallica_pdf.py \
-  --disable-step1 --disable-step2 \
-  --delete-pdf-after-success
+# Etape 3 images IIIF (4-5 req/min documentes par BnF en mode full)
+.venv/bin/python -u scripts/pipeline_manifest_iiif/scraping_images_gallica.py \
+  --requests-per-minute 4
 ```
 
-### Défauts baked in (à ne pas réécrire)
+Voir [pipeline_manifest.md](pipeline_manifest.md) pour le détail de la partition et de l'étape 3.
 
-| Option | Défaut |
-|---|---|
-| `--start-year` / `--end-year` | 1870 / 1914 |
-| `--issues-rpm` | 5 |
-| `--pdf-rpm` | 0.5 |
-| `--image-rpm` | 30 |
-| `--step{1,2,3}-cb-threshold` | 5 |
-| `--step{1,2,3}-cb-sleep-seconds` | 600 |
-| `--step{1,2,3}-cb-max-cooldowns` | 3 |
-| `--dpi` | 300 |
-| `--bitonal-threshold` | 180 |
-| `--image-format` | png |
-| caffeinate -i | auto (opt-out `--no-caffeinate`) |
+## Métadonnées bibliographiques (CSV séparé)
 
-### Options à connaître ponctuellement
-
-- `--force-step1` / `--force-pdf` / `--force-images` : ignore l'idempotence pour l'étape choisie.
-- `--show-browser` : affiche Firefox au lieu du headless (étape 2, debug).
-- `--step2-cookies-file <path>` : cookies Firefox exportés, utile contre ALTCHA.
-- `--step2-fail-fast-altcha` : stoppe si ALTCHA détecté.
-- `--no-caffeinate` : désactive le caffeinate auto.
-
-### Appel direct des sous-scripts
-
-Chaque script est autonome :
-
-- Étape 1 : `scripts/pipeline_pdf/scraping_arks_numeros_gallica_pdf.py`
-- Étape 2 : `scripts/pipeline_pdf/selenium_scraping_pdf.py` — nécessite Firefox + geckodriver (`/opt/homebrew/bin/geckodriver` par défaut).
-- Étape 3 : `scripts/pipeline_pdf/scraping_pdf_to_images.py` — nécessite `poppler` (pdfinfo/pdftoppm).
-
-## État de sortie
-
-- `input/arks_numeros.json` est **enrichi à chaque étape** : chaque item gagne `pdf_path`, `pdf_size_bytes`, `images_total`, `images_converted`, `status`, `error_stage`, etc.
-- `manifest_iiif_process/state_pdf.json` : état de l'orchestrateur (runs, revues done/error).
-- `tableau_arks_numeros.csv` : miroir à plat pour inspection rapide.
-
-Voir [todo.md](todo.md) pour l'état courant revue par revue.
-
-## Métadonnées bibliographiques (CSV pour le mémoire)
-
-Script séparé : `scripts/scraping_notices_revues.py`. Pour chaque revue listée dans `input/arks_revues.json`, requête l'API `https://gallica.bnf.fr/services/OAIRecord?ark=<ark>` et parse la notice Dublin Core renvoyée. Produit un CSV `input/notices_revues.csv` avec une ligne par revue.
-
-### Commande
+Script indépendant : `scripts/scraping_notices_revues.py`. Pour chaque revue listée dans `input/arks_revues.json`, requête l'API `https://gallica.bnf.fr/services/OAIRecord?ark=<ark>` et parse la notice Dublin Core. Produit `input/notices_revues.csv` (une ligne par revue, ~30 colonnes : title, publishers, periodicity, ISSN, années disponibles, etc.).
 
 ```bash
 .venv/bin/python -u scripts/scraping_notices_revues.py
 ```
 
-Options :
-- `--input` (défaut : `input/arks_revues.json`)
-- `--output` (défaut : `input/notices_revues.csv`)
-- `--requests-per-minute` (défaut : 5, comme l'étape 1)
-- `--start-year` / `--end-year` (défaut : 1870 / 1914) — utilisé pour calculer `nb_issues_in_period`.
-- `--user-agent`, `--timeout-seconds`.
+Options : `--input`, `--output`, `--requests-per-minute`, `--start-year`, `--end-year`, `--user-agent`, `--timeout-seconds`.
 
-### Colonnes du CSV produit
+## État de sortie
 
-| Colonne | Source XML | Exemple |
-|---|---|---|
-| `nom_court` | clé du JSON d'entrée | `revue_scientifique` |
-| `ark` / `ark_url` | URL pérenne | `ark:/12148/cb34378388w` |
-| `title` | `dc:title` | `Revue scientifique` |
-| `title_variants` | `dc:description` (préfixe « Variante(s) de titre ») | `Revue scientifique illustrée` |
-| `publishers` | `dc:publisher` (joints par ` \| `) | `G. Baillière (Paris)` |
-| `contributors` | `dc:contributor` | `Moureu, Charles (1863-1929). Éditeur scientifique` |
-| `date_publication` / `date_start` / `date_end` | `dc:date` | `1884-1954`, `1884`, `1954` |
-| `periodicity` | `dc:description` (préfixe « Périodicité ») | `Hebdomadaire (1884-1924)` |
-| `collection_state` | `dc:description` (préfixe « Etat de collection ») | `3e sér., t. 7 (1884)-…` |
-| `issn` | `dc:identifier` (extraction regex) | `03704556` |
-| `language`, `subjects`, `types` | DC correspondants | `fre`, `Pathologie` |
-| `dewey` / `sdewey` / `typedoc` | hors DC, balises Gallica | `5`, `50`, `fascicule` |
-| `source` | `dc:source` | `Bibliothèque nationale de France` |
-| `ensemble_documentaire` | `dc:description` (préfixe « Appartient à l'ensemble… ») | `FranceBr` |
-| `catalog_url` | `dc:relation` (URL `catalogue.bnf.fr`) | http://catalogue.bnf.fr/ark:/… |
-| `nb_total_views` | `dc:format` (« Nombre total de vues ») | `77317` |
-| `first_indexation_date` | hors DC | `15/10/2007` |
-| `years_available` / `nb_years_available` | balises `<date nbIssue="…">` | `1884\|1885\|…`, `68` |
-| `nb_issues_total` | somme des `nbIssue` | `133` |
-| `years_in_period` / `nb_years_in_period` / `nb_issues_in_period` | filtré sur `[start_year, end_year]` | `62` issues entre 1870 et 1914 |
-| `fetch_status` / `fetch_error` | `ok`, `error`, `not_found` | — |
+À chaque étape, `arks_numeros.json` (ou `arks_numeros_with_manifests.json`) est **enrichi** avec de nouveaux champs par item : `pdf_path`, `pdf_size_bytes`, `manifest_path`, `pages_total`, `images_total`, `images_converted`, `status`, `error_stage`, `error_code`, `error_message`. Chaque pipeline maintient aussi son `state_*.json` pour la reprise après interruption.
 
-## Prérequis
+Les sorties volumineuses (`pdf_process/`, `images_process/`, manifestes IIIF) sont gitignored. Seuls les JSON d'entrée et de partition sont versionnés.
 
-- Python 3 + `.venv` avec : `requests`, `selenium`, `pdf2image`, `Pillow`.
-- Binaires système : Firefox, `geckodriver`, `poppler` (pour `pdfinfo`, `pdftoppm`).
-- Respect des limites API Gallica (cf. https://api.bnf.fr/fr/node/232) : 5‑10 req/min max pour l'API Issues, très lent pour le PDF.
+## Cadences de requêtage (résumé pratique)
+
+Mesurées empiriquement face au throttling de Gallica (mai 2026) :
+
+| API | Documentation BnF | Cadence soutenable | Notes |
+|---|---|---|---|
+| Issues (étape 1) | 10/min | 5-10/min | Très permissif, ne déclenche jamais de 429. |
+| Manifest IIIF (étape 2 manifest) | non documenté | **1 req/min** | Plus strict que l'Image API en pratique. Burst ~20 puis throttle dur. |
+| Image IIIF full bitonal | 5/min (phase transitoire) | **4-5/min** | Limite documentée, confirmée par benchmark (0 % 429 à 4/min, 28 % à 6/min). |
+| PDF Gallica (étape 2 PDF) | non documenté | **1 PDF / 5 min** | Très conservateur. Pas une API documentée, comportement instable. |
+
+Ces valeurs sont les défauts des scripts. Le circuit breaker arrête le run après N cooldowns consécutifs.
+
+## Licence
+
+Voir [LICENSE](LICENSE). Le code est sous licence GPL-3.0. Les données collectées (revues numérisées) restent la propriété de la Bibliothèque nationale de France, distribuées sous leurs propres conditions de réutilisation (https://gallica.bnf.fr/edit/und/conditions-dutilisation-des-contenus-de-gallica).

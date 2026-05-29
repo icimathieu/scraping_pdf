@@ -10,13 +10,14 @@ Tous les autres défauts sont déjà baked in dans les scripts `scripts/pipeline
 |---|---|
 | `--start-year` / `--end-year` | 1870 / 1914 |
 | `--issues-rpm` (étape 1) | 5 |
-| `--pdf-rpm` (étape 2) | **0.3** (1 PDF / 3 min 20s, baisse pour eviter throttling Gallica sur gros PDFs) |
+| `--pdf-rpm` (étape 2) | **0.2** (1 PDF / 5 min, conservateur pour eviter throttling Gallica) |
 | `--image-rpm` (étape 3) | 30 |
 | `--timeout-pdf` (étape 2) | **1800s** (30 min, pour les gros PDFs ~200 MB) |
 | `--step2-stalled-timeout-seconds` | **120s** (abandon si .part ne grossit plus depuis 2 min = connexion coupee) |
 | `--step1-cb-threshold` / `--step3-cb-threshold` | 5 |
-| `--step2-cb-threshold` | **3** (plus strict, moins tolerant aux echecs) |
-| `--step{1,2,3}-cb-sleep-seconds` | 600 |
+| `--step2-cb-threshold` | **2** (plus strict, abandon rapide sur connexions coupees) |
+| `--step1-cb-sleep-seconds` / `--step3-cb-sleep-seconds` | 600 |
+| `--step2-cb-sleep-seconds` | **3600** (1h, laisser le throttle Gallica retomber) |
 | `--step1-cb-max-cooldowns` / `--step3-cb-max-cooldowns` | 3 |
 | `--step2-cb-max-cooldowns` | **2** (plus strict) |
 | `--step2-cookies-file` | `gallica.bnf.fr_cookies.txt` (auto si present) |

@@ -3,14 +3,17 @@ Pipeline Gallica PDF (4 etapes)
 
 Objectif global
 ---------------
-- A partir d'ARK de revues, produire la liste complete des ARK de numeros sur une periode donnee.
-- Pour chaque numero, telecharger le PDF Gallica.
+- A partir d'ARK de revues, produire la liste des ARK de numeros sur une periode donnee.
+- Pour chaque numero, telecharger le PDF Gallica (via Selenium/Firefox pour passer ALTCHA).
 - Convertir les PDF en images bitonales (PNG ou TIFF), page par page.
-- Industrialiser l'ensemble dans un orchestrateur avec reprise/idempotence.
+- Industrialiser le tout dans un orchestrateur avec reprise et idempotence.
+
+Cette pipeline est utilisee pour les **gros numeros (>= 500 pages)** dans la partition courante.
+Pour les petits numeros, voir pipeline_manifest.md.
 
 
-ETAPE 1 - Revue ARK -> ARK de tous les numeros (deja codee)
------------------------------------------------------------
+ETAPE 1 - Revue ARK -> ARK de tous les numeros
+----------------------------------------------
 Script de reference:
 - scripts/pipeline_pdf/scraping_arks_numeros_gallica_pdf.py
 
@@ -22,289 +25,172 @@ Sorties:
 - JSON: input/arks_numeros.json
 - CSV:  input/tableau_arks_numeros.csv
 
-Sous-etapes detaillees:
-1. Chargement de la configuration CLI.
-   - Parametres principaux:
-     - --input (defaut: input/arks_revues.json)
-     - --output-json (defaut: input/arks_numeros.json)
-     - --output-csv (defaut: input/tableau_arks_numeros.csv)
-     - --start-year (defaut: 1870)
-     - --end-year (defaut: 1914)
-     - --requests-per-minute (defaut: 5)
-     - --user-agent (defaut: memoire-gallica-scraper/1.0 (+contact-local))
-     - --cb-threshold (defaut: 5)
-     - --cb-sleep-seconds (defaut: 600)
-     - --cb-max-cooldowns (defaut: 1)
+Parametres CLI principaux (defauts):
+- --input                  input/arks_revues.json
+- --output-json            input/arks_numeros.json
+- --output-csv             input/tableau_arks_numeros.csv
+- --start-year             1870
+- --end-year               1914
+- --requests-per-minute    5
+- --user-agent             "memoire-gallica-scraper/1.0 (+contact-local)"
+- --cb-threshold           5
+- --cb-sleep-seconds       600
+- --cb-max-cooldowns       3
 
-2. Chargement du fichier revues.
-   - Lecture JSON avec json.load.
-   - Validation implicite du format dictionnaire nom->ark/url.
+Logique:
+1. Chargement et normalisation de chaque ARK de revue ("ark:/12148/..." + suffixe "/date").
+2. Pour chaque revue : GET https://gallica.bnf.fr/services/Issues?ark=<ark_revue_date>,
+   parsing XML, extraction des balises <year> filtrees sur [start_year, end_year].
+3. Pour chaque annee retenue : GET https://gallica.bnf.fr/services/Issues?ark=<ark>&date=<annee>,
+   parsing des <issue> avec attributs ark, dayOfYear, precision.
+4. Construction du numero_id :
+   - si la precision contient YYYY/MM/DD : numero_id = <revue> + YYYYMMDD
+   - sinon : numero_id = <revue><annee><dayOfYear>_<id_ark_court>
+5. Ecriture du JSON enrichi + CSV miroir.
 
-3. Normalisation de l'ARK de revue.
-   - Extraction de la forme "ark:/12148/xxxx" meme si la valeur source est une URL.
-   - Ajout du suffixe "/date" si absent.
-   - Resultat attendu pour l'API Issues: "ark:/12148/.../date".
+Robustesse:
+- requests.Session avec Retry(total=2, backoff_factor=1.0) sur 429/5xx.
+- Rate limiter local en fenetre glissante (60s).
+- Circuit breaker (3 cooldowns max de 600s sur erreurs transitoires).
 
-4. Initialisation HTTP robuste.
-   - requests.Session.
-   - Retry automatique sur erreurs transitoires:
-     - codes: 429, 500, 502, 503, 504
-     - retries reseau connect/read
-     - backoff exponentiel.
-   - timeout de requete (30s dans le script actuel).
-   - User-Agent explicite.
-
-5. Application d'un rate limiting client.
-   - Limiteur local en fenetre glissante (60s).
-   - Maximum configurable de requetes/minute (defaut 10).
-   - Attente automatique avant chaque appel si la fenetre est pleine.
-
-6. Recuperation des annees de parution pour chaque revue.
-   - Appel:
-     - GET https://gallica.bnf.fr/services/Issues?ark=<ark_revue_date>
-   - Parsing XML de la reponse.
-   - Extraction de toutes les balises <year>.
-   - Conversion en entiers et tri.
-
-7. Filtrage de la periode.
-   - Conservation des annees y telles que:
-     - start_year <= y <= end_year
-   - Cas courant:
-     - 1870 <= y <= 1914.
-
-8. Recuperation des fascicules annee par annee.
-   - Pour chaque annee retenue:
-     - GET https://gallica.bnf.fr/services/Issues?ark=<ark_revue_date>&date=<annee>
-   - Parsing XML.
-   - Pour chaque balise <issue>:
-     - lecture attribut ark (ARK du numero)
-     - lecture attribut dayOfYear (si present)
-     - lecture texte libre "precision".
-
-9. Normalisation des ARK de numero.
-   - Si l'attribut issue ark ne contient pas le prefixe complet:
-     - reconstruction "ark:/12148/<id>".
-
-10. Construction d'un identifiant "numero_id".
-    - Si la precision contient une date "YYYY/MM/DD":
-      - numero_id = <nom_revue> + YYYYMMDD.
-    - Sinon fallback deterministic:
-      - numero_id = <nom_revue><annee><dayOfYear sur 3 chiffres>_<id_ark_court>.
-
-11. Construction de la structure de sortie.
-    - Une entree "items" par numero, chaque item contenant:
-      - revue
-      - parent_ark_date
-      - year
-      - day_of_year
-      - numero_id
-      - issue_ark
-      - precision
-      - status
-      - error_stage
-      - error_code
-      - error_message
-
-12. Ecriture des fichiers.
-    - JSON final:
-      - period {start_year, end_year}
-      - total_issues
-      - total_errors
-      - total_events
-      - items[]
-    - CSV final (sans index explicite):
-      - revue,parent_ark_date,year,day_of_year,numero_id,issue_ark,precision,status,error_stage,error_code,error_message
-
-13. Trace d'execution console.
-    - Affiche la revue en cours.
-    - Affiche le nombre d'annees retenues.
-    - Affiche le nombre final de fascicules exportes.
-
-Commande d'execution type:
-- .venv/bin/python -u scripts/pipeline_pdf/scraping_arks_numeros_gallica_pdf.py
+Commande d'execution directe:
+  .venv/bin/python -u scripts/pipeline_pdf/scraping_arks_numeros_gallica_pdf.py
 
 
-ETAPE 2 - ARK de numero -> PDF Gallica (deja codee)
-----------------------------------------------------
+ETAPE 2 - ARK de numero -> PDF Gallica (Selenium)
+-------------------------------------------------
 Script de reference:
 - scripts/pipeline_pdf/selenium_scraping_pdf.py
+
+Pourquoi Selenium plutot qu'un GET direct sur .pdf : depuis fin 2025 Gallica protege
+l'endpoint PDF par un challenge ALTCHA en cas de detection de comportement bot,
+qui se valide soit en interactif soit via un cookie de session importe depuis
+un Firefox utilisateur.
 
 Entree:
 - input/arks_numeros.json (structure avec items[])
 
 Sorties:
-- JSON enrichi: input/arks_numeros.json
-- CSV enrichi:  input/tableau_arks_numeros.csv
-- PDFs sur disque:
-  - pdf_process/<revue>/<numero_id>/<numero_id>.pdf
+- JSON enrichi : input/arks_numeros.json
+- CSV enrichi  : input/tableau_arks_numeros.csv
+- PDFs sur disque : pdf_process/<revue>/<numero_id>/<numero_id>.pdf
 
-Sous-etapes detaillees:
-1. Chargement de la configuration CLI.
-   - Parametres principaux:
-     - --input (defaut: input/arks_numeros.json)
-     - --output (defaut: input/arks_numeros.json)
-     - --output-csv (defaut: input/tableau_arks_numeros.csv)
-     - --pdf-root (defaut: pdf_process)
-     - --requests-per-minute (defaut: 0.5)
-     - --page-timeout-seconds (defaut: 60)
-     - --timeout-seconds (defaut: 600) [timeout de telechargement]
-     - --user-agent
-     - --cb-threshold (defaut: 5)
-     - --cb-sleep-seconds (defaut: 600)
-     - --cb-max-cooldowns (defaut: 1)
-     - --show-browser (headless actif par defaut)
-     - --force (re-telechargement des PDF existants)
+Parametres CLI principaux (defauts):
+- --input                       input/arks_numeros.json
+- --output                      input/arks_numeros.json
+- --output-csv                  input/tableau_arks_numeros.csv
+- --pdf-root                    pdf_process
+- --requests-per-minute         0.2          (1 PDF toutes les 5 minutes)
+- --page-timeout-seconds        60           (chargement de la page Gallica)
+- --timeout-seconds             1800         (timeout total de telechargement, 30 min)
+- --stalled-timeout-seconds     120          (abandon si le .part ne grossit plus depuis 2 min)
+- --progress-log-seconds        10
+- --cb-threshold                2            (plus strict que les autres etapes)
+- --cb-sleep-seconds            3600         (1 h de cooldown, laisser Gallica retomber)
+- --cb-max-cooldowns            2
+- --cookies-file                gallica.bnf.fr_cookies.txt
+- --user-agent                  ""           (vide = UA natif de Firefox, important contre ALTCHA)
+- --geckodriver-path            /opt/homebrew/bin/geckodriver
+- --firefox-binary-path         /Applications/Firefox.app/Contents/MacOS/firefox
+- --fail-fast-altcha            (flag : stoppe immediatement si ALTCHA detecte)
+- --show-browser                (flag : affiche Firefox au lieu du headless)
+- --force                       (flag : re-telechargement des PDF existants)
 
-2. Chargement du JSON d'entree et resolution de items[].
-   - Lecture du payload JSON.
-   - Verification de la presence de items[].
+Logique:
+1. Lancement de Firefox via geckodriver (headless par defaut).
+2. Si --cookies-file existe, import des cookies dans la session Selenium (necessaire
+   pour bypasser ALTCHA en non-interactif). Le format attendu est le format Mozilla
+   cookies.txt, exporte depuis l'extension "Cookie Quick Manager" ou similaire.
+3. Pour chaque item :
+   - Construction de pdf_url = https://gallica.bnf.fr/<issue_ark>.pdf
+   - Construction du pdf_path local
+   - Si le PDF existe deja (taille > 0) et pas --force : skip
+   - Sinon : ouverture de l'URL dans Selenium, attente du .part dans le dossier
+     de telechargement, verification de la signature PDF et de l'absence de page
+     HTML/ALTCHA/429, deplacement vers pdf_path.
+4. Mise a jour de l'item : pdf_url, pdf_path, pdf_size_bytes, status, error_*.
 
-3. Initialisation Selenium robuste.
-   - Lancement de Firefox via geckodriver.
-   - Headless actif par defaut.
-   - Possibilite de charger des cookies Firefox.
-   - Rate limiter local avec intervalle minimal, inferieur a 1 req/min par defaut.
+Detection ALTCHA :
+- Si la page chargee contient le marqueur ALTCHA (CSS id "customAltcha_checkbox_*"),
+  Selenium tente le clic. Si --fail-fast-altcha : on s'arrete au premier ALTCHA.
+- Si le challenge ne peut pas etre resolu : error_code = "captcha_required".
 
-4. Iteration sur chaque item.
-   - Lecture de numero_id, issue_ark, revue.
-   - Validation minimale des champs obligatoires.
-   - Normalisation de issue_ark vers "ark:/12148/...".
+Detection des decrochages reseau :
+- Si la taille du .part ne grossit plus pendant --stalled-timeout-seconds (2 min)
+  alors que --timeout-seconds n'est pas atteint, on tue le telechargement et on passe
+  au numero suivant (connexion coupee = inutile d'attendre les 30 min).
 
-5. Construction de l'URL PDF et du chemin local.
-   - URL PDF:
-     - https://gallica.bnf.fr/<issue_ark>.pdf
-   - Chemin local:
-     - pdf_process/<numero_id_sanitized>/<numero_id_sanitized>.pdf
-   - Ajout immediat dans item:
-     - pdf_url
-     - pdf_path
-
-6. Strategie idempotente locale.
-   - Si le PDF existe deja et taille > 0 et pas --force:
-     - status = "ok"
-     - skip du telechargement.
-
-7. Telechargement du PDF si necessaire.
-   - Attente rate limiter.
-   - Ouverture de l'URL PDF dans Firefox/Selenium.
-   - Optionnellement: clic robuste sur un element HTML si un selecteur est configure.
-   - Attente de l'apparition du fichier dans un dossier de telechargement Selenium.
-   - Validation de la signature PDF et de l'absence de page HTML/ALTCHA/429.
-   - Deplacement du fichier vers le chemin final.
-   - Mise a jour item:
-     - pdf_size_bytes
-     - status = "ok"
-   - En cas d'erreur:
-     - status = "error"
-      - error_stage = "pdf_download" (ou stage pdf_*)
-     - error_code = code structure (ex: 429, timeout, captcha_required, webdriver_error)
-     - error_message = message erreur.
-
-8. Ecriture des sorties enrichies.
-   - JSON:
-     - conserve items[]
-     - ajoute/maj pdf_collection (downloaded/existing/errors/skipped_prior_error).
-   - CSV:
-     - revue,parent_ark_date,year,day_of_year,numero_id,issue_ark,precision,pdf_url,pdf_path,pdf_size_bytes,status,error_stage,error_code,error_message
-
-Commande d'execution type:
-- .venv/bin/python -u scripts/pipeline_pdf/selenium_scraping_pdf.py --input input/arks_numeros.json --output input/arks_numeros.json --output-csv input/tableau_arks_numeros.csv --pdf-root pdf_process
+Commande d'execution directe:
+  .venv/bin/python -u scripts/pipeline_pdf/selenium_scraping_pdf.py
 
 
-ETAPE 3 - PDF -> images bitonales (deja codee)
------------------------------------------------
+ETAPE 3 - PDF -> images bitonales
+----------------------------------
 Script de reference:
 - scripts/pipeline_pdf/scraping_pdf_to_images.py
 
 Objectif:
-- Convertir les PDF en images bitonales (PNG/TIFF) page par page.
+- Rendre chaque page d'un PDF en image bitonale 1-bit (PNG ou TIFF) prete pour OCR.
+- Conversion 100% locale via Poppler (pdftoppm), pas de requete reseau.
 
 Entree:
-- input/arks_numeros.json (items enrichis avec pdf_path ou pdf_root)
+- input/arks_numeros.json (items avec pdf_path)
 
 Sorties:
-- JSON enrichi: input/arks_numeros.json
-- CSV enrichi: input/tableau_arks_numeros.csv
-- Images:
-  - images_process/<revue>/<numero_id>/page_0001.png (ou .tif)
+- JSON enrichi : input/arks_numeros.json
+- CSV enrichi  : input/tableau_arks_numeros.csv
+- Images : images_process/<revue>/<numero_id>/page_XXXX.png (ou .tif)
 
-Sous-etapes detaillees:
-1. Chargement de la configuration CLI.
-   - Parametres principaux:
-     - --input, --output, --output-csv
-     - --pdf-root (defaut: pdf_process)
-     - --image-root (defaut: images_process)
-     - --requests-per-minute (defaut: 30) [throttling local de conversion]
-     - --cb-threshold (defaut: 5)
-     - --cb-sleep-seconds (defaut: 600)
-     - --dpi (defaut: 200)
-     - --bitonal-threshold (defaut: 180)
-     - --image-format (defaut: png, choix: png|tiff)
-     - --first-page (defaut: 1)
-     - --last-page (defaut: 0, 0 = derniere page)
-     - --force
+Parametres CLI principaux (defauts):
+- --input                  input/arks_numeros.json
+- --output                 input/arks_numeros.json
+- --output-csv             input/tableau_arks_numeros.csv
+- --pdf-root               pdf_process
+- --image-root             images_process
+- --requests-per-minute    120          (throttling local de conversion)
+- --cb-threshold           5
+- --cb-sleep-seconds       600
+- --cb-max-cooldowns       3
+- --dpi                    300          (200 minimum pour OCR Tesseract, 300 recommande)
+- --bitonal-threshold      180          (seuillage gris -> 1-bit)
+- --image-format           png          (choix : png | tiff)
+- --first-page             1
+- --last-page              0            (0 = derniere page)
+- --poppler-path           ""           (auto si poppler dans le PATH)
+- --delete-pdf-after-success           (flag : supprime le PDF apres conversion reussie)
+- --force                              (flag : reconvertit meme si l'image existe)
 
-2. Resolution du PDF par item.
-   - Priorite a item.pdf_path si present.
-   - Sinon fallback: <pdf_root>/<numero_id>/<numero_id>.pdf.
+Logique:
+1. Resolution du PDF : priorite a item.pdf_path, sinon fallback <pdf_root>/<numero_id>/<numero_id>.pdf.
+2. Lecture metadata via pdfinfo_from_path (verifie la presence de Poppler).
+3. Conversion page par page via pdf2image (fmt=ppm) :
+   - rendu DPI
+   - conversion niveaux de gris (Pillow)
+   - seuillage bitonal 1-bit
+   - sauvegarde PNG optimise OU TIFF compression Group4
+   - skip si l'image existe deja (sauf --force)
+4. Maj des compteurs item : images_total, images_converted, images_existing, images_errors.
+5. Si --delete-pdf-after-success : le PDF est supprime apres conversion complete sans erreur.
 
-3. Verification source PDF.
-   - Controle presence du fichier PDF local et taille > 0.
-   - En cas d'absence:
-     - status = "error"
-     - error_stage = "pdf_to_jpg_source"
-     - error_code = "pdf_not_found".
+Erreurs normalisees:
+- pdf_to_jpg_source / pdf_not_found
+- pdf_to_jpg_pdfinfo / pdfinfo_not_installed / pdf_page_count_error / pdf_syntax_error
+- pdf_to_jpg_convert / pdf_to_jpg_save
 
-4. Lecture metadata PDF.
-   - Extraction du nombre de pages via pdfinfo_from_path.
-   - Verification et normalisation de la plage de pages:
-     - [first_page, last_page] bornee a total_pages.
-   - Erreurs gerees:
-     - pdfinfo_not_installed
-     - pdf_page_count_error
-     - pdf_syntax_error
-     - invalid_page_range.
-
-5. Conversion page par page.
-   - Pour chaque page selectionnee:
-     - rendu via pdf2image (fmt=ppm)
-     - conversion en niveaux de gris
-     - seuillage bitonal 1-bit selon bitonal-threshold
-     - sauvegarde:
-       - PNG optimise, ou
-       - TIFF compression Group4.
-   - Skip si image deja presente et taille > 0 (sauf --force).
-
-6. Mise a jour des compteurs item.
-   - images_total (pages selectionnees)
-   - images_converted
-   - images_existing
-   - images_errors
-   - image_output_dir
-
-7. Gestion d'erreurs normalisee.
-   - status = "error"
-   - error_stage = pdf_to_jpg_input_validation|pdf_to_jpg_pdfinfo|pdf_to_jpg_convert|...
-   - error_code / error_message.
-
-8. Ecriture des sorties enrichies.
-   - JSON:
-     - conserve items[]
-     - ajoute/maj pdf_image_collection (dpi/threshold/format + compteurs).
-   - CSV:
-     - revue,parent_ark_date,year,day_of_year,numero_id,issue_ark,precision,pdf_url,pdf_path,pdf_size_bytes,image_output_dir,images_total,images_converted,images_existing,images_errors,status,error_stage,error_code,error_message
-
-Commande d'execution type:
-- .venv/bin/python -u scripts/pipeline_pdf/scraping_pdf_to_images.py --input input/arks_numeros.json --output input/arks_numeros.json --output-csv input/tableau_arks_numeros.csv --pdf-root pdf_process --image-root images_process --image-format png --dpi 200 --bitonal-threshold 180
+Commande d'execution directe:
+  .venv/bin/python -u scripts/pipeline_pdf/scraping_pdf_to_images.py
 
 
-ETAPE 4 - Industrialisation / Orchestrateur (deja codee)
---------------------------------------------------------
+ETAPE 4 - Orchestrateur
+-----------------------
 Script de reference:
 - scripts/pipeline_pdf/run_pipeline_gallica_pdf.py
 
-Objectif:
-- Enchainer automatiquement les 3 etapes avec reprise, idempotence et etat persistant.
+Role:
+- Enchainer automatiquement les 3 etapes avec reprise et idempotence.
+- Lancer caffeinate -i (subprocess lie au PID parent, meurt avec le run) sur macOS
+  pour empecher la mise en veille pendant les longs scrapings.
+- Detecter ce qui reste a faire a chaque etape avant de lancer le sous-script.
 
 Entrees:
 - input/arks_revues.json
@@ -314,58 +200,91 @@ Entrees:
 Sorties:
 - input/arks_numeros.json (mis a jour)
 - input/tableau_arks_numeros.csv (mis a jour)
-- manifest_iiif_process/state_pdf.json
+- manifest_iiif_process/state_pdf.json (etat persistant : runs, revues done/error)
 - pdf_process/... et images_process/...
 
-Sous-etapes detaillees:
-1. Initialisation du run.
-   - Charge l'etat state_pdf.json (ou l'initialise).
-   - Ajoute une entree runs[] avec status="running".
+Parametres CLI principaux (defauts) :
 
-2. Etape 1 conditionnelle (issues).
-   - Detecte les revues a recalculer:
-     - nouvelle revue,
-     - ARK modifie,
-     - revue non "done",
-     - ou --force-step1.
-   - Lance scraping_arks_numeros_gallica_pdf.py sur les revues pending seulement.
-   - Merge intelligent du resultat dans input/arks_numeros.json.
-   - Met a jour state.revues[*].status/last_error.
+Periode :
+- --start-year                    1870
+- --end-year                      1914
 
-3. Etape 2 conditionnelle (PDF).
-   - Detecte les items restants:
-     - pdf_path manquant,
-     - fichier absent,
-     - fichier vide,
-     - ou --force-pdf.
-   - Lance selenium_scraping_pdf.py avec les parametres rpm/circuit-breaker/timeouts.
+Cadences :
+- --issues-rpm                    5            (etape 1)
+- --pdf-rpm                       0.2          (etape 2, 1 PDF / 5 min)
+- --image-rpm                     30           (etape 3, throttling de conversion locale)
 
-4. Etape 3 conditionnelle (images).
-   - Detecte les items restants:
-     - images_total==0,
-     - images_errors>0,
-     - converted+existing < total,
-     - ou --force-images.
-   - Lance scraping_pdf_to_images.py avec format/dpi/threshold/plage pages.
+Circuit breaker etape 1 :
+- --step1-cb-threshold            5
+- --step1-cb-sleep-seconds        600
+- --step1-cb-max-cooldowns        3
 
-5. Finalisation etat.
-   - Calcule status final du run: done/error selon return codes etapes.
-   - Renseigne finished_at et last_run.
-   - Sauvegarde state_pdf.json.
+Circuit breaker etape 2 (plus strict, decroachages reseau frequents) :
+- --step2-cb-threshold            2
+- --step2-cb-sleep-seconds        3600
+- --step2-cb-max-cooldowns        2
 
-Configuration CLI principale:
-- --issues-rpm (defaut: 5)
-- --pdf-rpm (defaut: 0.5)
-- --image-rpm (defaut: 30)
-- --step1-cb-max-cooldowns (defaut: 1)
-- --step2-cb-max-cooldowns (defaut: 1)
-- --step2-page-timeout-seconds (defaut: 60)
-- --timeout-pdf (defaut: 600)
-- --step1-cb-threshold / --step1-cb-sleep-seconds (5 / 600)
-- --step2-cb-threshold / --step2-cb-sleep-seconds (5 / 600)
-- --step3-cb-threshold / --step3-cb-sleep-seconds (5 / 600)
+Circuit breaker etape 3 :
+- --step3-cb-threshold            5
+- --step3-cb-sleep-seconds        600
+- --step3-cb-max-cooldowns        3
+
+Etape 2 (Selenium specifique) :
+- --step2-page-timeout-seconds    60
+- --timeout-pdf                   1800
+- --step2-stalled-timeout-seconds 120
+- --step2-progress-log-seconds    10
+- --step2-cookies-file            gallica.bnf.fr_cookies.txt  (auto si present)
+- --step2-fail-fast-altcha
+- --show-browser
+
+Etape 3 (conversion locale) :
+- --dpi                           300
+- --bitonal-threshold             180
+- --image-format                  png
+- --poppler-path                  ""
+- --delete-pdf-after-success
+
+Generaux :
+- --user-agent                    ""           (vide = Firefox natif)
+- --no-caffeinate                 (opt-out du caffeinate auto sur macOS)
 - --disable-step1 / --disable-step2 / --disable-step3
-- --force-step1 / --force-pdf / --force-images
+- --force-step1   / --force-pdf   / --force-images
 
-Commande d'execution type (pipeline complete):
-- .venv/bin/python -u scripts/pipeline_pdf/run_pipeline_gallica_pdf.py --revues-input input/arks_revues.json --numeros-json input/arks_numeros.json --numeros-csv input/tableau_arks_numeros.csv --pdf-root pdf_process --image-root images_process --image-format png --dpi 200 --bitonal-threshold 180
+Logique :
+1. Initialisation du run : chargement de state_pdf.json (ou init), ajout d'une entree
+   runs[] avec status="running".
+2. Etape 1 conditionnelle : detecte les revues a (re)calculer (nouvelle revue, ARK
+   modifie, status != done, ou --force-step1). Merge intelligent du resultat.
+3. Etape 2 conditionnelle : detecte les items sans pdf_path / fichier absent / vide,
+   ou --force-pdf. Lance selenium_scraping_pdf.py.
+4. Etape 3 conditionnelle : detecte les items avec images_total==0 OU
+   images_errors>0 OU converted+existing < total OU --force-images.
+5. Finalisation : status final (done/error selon return codes), finished_at,
+   sauvegarde state_pdf.json.
+
+Commandes d'execution type (voir aussi CLAUDE.md) :
+
+Pipeline complete (PDF + conversion + suppression des PDFs apres succes) :
+  .venv/bin/python -u scripts/pipeline_pdf/run_pipeline_gallica_pdf.py \
+      --delete-pdf-after-success
+
+Etapes isolees :
+  .venv/bin/python -u scripts/pipeline_pdf/run_pipeline_gallica_pdf.py --disable-step2 --disable-step3
+  .venv/bin/python -u scripts/pipeline_pdf/run_pipeline_gallica_pdf.py --disable-step1 --disable-step3
+  .venv/bin/python -u scripts/pipeline_pdf/run_pipeline_gallica_pdf.py --disable-step1 --disable-step2 \
+      --delete-pdf-after-success
+
+
+Notes transverses
+-----------------
+- Toujours HTTPS.
+- User-Agent : pour l'etape 2 PDF, laisser vide pour que Firefox envoie son UA natif
+  (important contre les mismatch ALTCHA quand les cookies viennent du meme Firefox).
+- Le PDF Gallica n'est pas une API documentee : la cadence "1 PDF / 5 min" a ete
+  trouvee empiriquement et reste tres conservatrice. Le throttle se manifeste par
+  des 429 sur l'endpoint .pdf ou par des challenges ALTCHA persistants.
+- En cas de longue interruption reseau pendant l'etape 2, le scraper logue des
+  ConnectionError mais ne crashe pas : il les compte dans le circuit breaker. Si la
+  streak depasse cb-threshold, un cooldown se declenche. Apres cb-max-cooldowns
+  consecutifs, le run s'arrete proprement.
