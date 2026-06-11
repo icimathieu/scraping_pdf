@@ -41,6 +41,7 @@ scripts/cron_iiif_step2_full.sh
 # Notes privees / brouillons
 note_memoire_scraping.md
 untitled text 2.txt
+PROMPT_scraping_revues_scientifiques.md
 
 # Cookies de session (NE JAMAIS COMMITER)
 gallica.bnf.fr_cookies.txt
