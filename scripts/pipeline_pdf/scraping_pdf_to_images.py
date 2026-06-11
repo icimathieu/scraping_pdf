@@ -191,11 +191,12 @@ def cleanup_empty_dirs(start_dir: Path, stop_dir: Path) -> None:
         current = parent
 
 
-def convert_pdf_page_to_bitonal(
+def convert_pdf_page_to_image(
     pdf_path: Path,
     output_path: Path,
     page_number: int,
     dpi: int,
+    mode: str,
     bitonal_threshold: int,
     image_format: str,
     poppler_path: Optional[str],
@@ -211,18 +212,24 @@ def convert_pdf_page_to_bitonal(
     )
     if not images:
         raise ValueError("Aucune image retournee pendant la conversion du PDF")
-    grayscale = images[0].convert("L")
-    bitonal = grayscale.point(
-        lambda px: 255 if px >= bitonal_threshold else 0,
-        mode="1",
-    )
+
+    # Par defaut : 8-bit niveaux de gris (mode "gray") -- coherent avec la voie
+    # IIIF (bitonal.png renvoye par Gallica = PNG gris 8-bit) et meilleur pour
+    # l'OCR (pas de perte sur le texte pale). Le mode "bitonal" (1-bit) reste
+    # disponible via --mode bitonal.
+    image = images[0].convert("L")
+    if mode == "bitonal":
+        image = image.point(lambda px: 255 if px >= bitonal_threshold else 0, mode="1")
 
     if image_format == "png":
-        bitonal.save(output_path, format="PNG", optimize=True)
+        image.save(output_path, format="PNG", optimize=True)
         return
 
     if image_format == "tiff":
-        bitonal.save(output_path, format="TIFF", compression="group4")
+        # group4 = compression fax, 1-bit uniquement ; en niveaux de gris on
+        # bascule sur LZW (lossless) pour rester compatible.
+        compression = "group4" if mode == "bitonal" else "tiff_lzw"
+        image.save(output_path, format="TIFF", compression=compression)
         return
 
     raise ValueError(f"Format image non supporte: {image_format}")
@@ -242,7 +249,11 @@ def main() -> None:
     parser.add_argument("--cb-sleep-seconds", type=int, default=600)
     parser.add_argument("--cb-max-cooldowns", type=int, default=3)
     parser.add_argument("--dpi", type=int, default=300)
-    parser.add_argument("--bitonal-threshold", type=int, default=180)
+    parser.add_argument("--bitonal-threshold", type=int, default=180,
+        help="Seuil 0-255 utilise uniquement si --mode bitonal.")
+    parser.add_argument("--mode", choices=("gray", "bitonal"), default="gray",
+        help="gray = 8-bit niveaux de gris (defaut, coherent voie IIIF, meilleur OCR) ; "
+             "bitonal = 1-bit (utilise --bitonal-threshold).")
     parser.add_argument("--image-format", choices=("png", "tiff"), default="png")
     parser.add_argument("--first-page", type=int, default=1)
     parser.add_argument("--last-page", type=int, default=0)
@@ -438,11 +449,12 @@ def main() -> None:
 
             limiter.wait_turn()
             try:
-                convert_pdf_page_to_bitonal(
+                convert_pdf_page_to_image(
                     pdf_path=pdf_path,
                     output_path=image_path,
                     page_number=page_index,
                     dpi=args.dpi,
+                    mode=args.mode,
                     bitonal_threshold=args.bitonal_threshold,
                     image_format=args.image_format,
                     poppler_path=poppler_path,
@@ -518,6 +530,7 @@ def main() -> None:
         "pdf_root": pdf_root.as_posix(),
         "image_root": image_root.as_posix(),
         "image_format": args.image_format,
+        "mode": args.mode,
         "dpi": args.dpi,
         "bitonal_threshold": args.bitonal_threshold,
         "delete_pdf_after_success": args.delete_pdf_after_success,

@@ -320,7 +320,11 @@ def main() -> None:
              "comme une connexion coupee par le serveur.")
     parser.add_argument("--step2-progress-log-seconds", type=int, default=10)
     parser.add_argument("--dpi", type=int, default=300)
-    parser.add_argument("--bitonal-threshold", type=int, default=180)
+    parser.add_argument("--bitonal-threshold", type=int, default=180,
+        help="Seuil 0-255 utilise uniquement si --mode bitonal.")
+    parser.add_argument("--mode", choices=("gray", "bitonal"), default="gray",
+        help="gray = 8-bit niveaux de gris (defaut, coherent voie IIIF, meilleur OCR) ; "
+             "bitonal = 1-bit.")
     parser.add_argument("--image-format", choices=("png", "tiff"), default="png")
     parser.add_argument("--poppler-path", default="")
     parser.add_argument("--delete-pdf-after-success", action="store_true")
@@ -621,6 +625,8 @@ def main() -> None:
                 str(args.step3_cb_max_cooldowns),
                 "--dpi",
                 str(args.dpi),
+                "--mode",
+                args.mode,
                 "--bitonal-threshold",
                 str(args.bitonal_threshold),
                 "--image-format",
