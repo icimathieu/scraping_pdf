@@ -46,6 +46,12 @@ untitled text 2.txt
 gallica.bnf.fr_cookies.txt
 *.cookies.txt
 
+# Ops perso rog-server (chemins/IP/topic personnels — non publies)
+scripts/rog_server/
+
+# Entree generee pour rog-server (recreable via scripts/rog_server/make_rog_input.py)
+input/arks_partition_iiif_rogserver.json
+
 # Fichiers systeme
 .DS_Store
 __pycache__/
@@ -54,3 +60,4 @@ __pycache__/
 .claude
 .vscode/
 .idea/
+CLAUDE.md
