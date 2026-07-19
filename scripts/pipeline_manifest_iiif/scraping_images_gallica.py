@@ -66,6 +66,22 @@ class CircuitBreaker429:
             return "429" in str(exc)
         return False
 
+    @staticmethod
+    def is_definitive_skip(exc: Exception) -> bool:
+        """404 = la page n'existe pas cote Gallica (trou de pagination). Erreur
+        permanente : ne doit PAS compter dans le breaker, qui est reserve aux
+        429 et erreurs reseau transitoires. Reessayer ne la fera jamais
+        apparaitre, donc une rafale de 404 ne doit pas declencher de cooldown."""
+        if isinstance(exc, requests.HTTPError) and getattr(exc, "response", None) is not None:
+            return exc.response.status_code == 404
+        return False
+
+    def record_skip(self, context: str) -> None:
+        """Page absente (404) : evenement definitif, neutre pour le breaker.
+        On ne touche pas consecutive_failures (ni +1 ni reset) : seules les
+        vraies erreurs transitoires comptent vers le cooldown."""
+        print(f"[INFO][circuit_breaker] skip page absente (404) context={context}")
+
     def record_success(self) -> None:
         if self.consecutive_failures > 0:
             print(
@@ -225,8 +241,56 @@ def extract_canvas_image_service_id(canvas: Dict[str, Any]) -> str:
     raise ValueError("URL IIIF introuvable pour le canvas")
 
 
-def build_image_url(service_id: str, quality: str, image_format: str) -> str:
-    return f"{service_id}/full/full/0/{quality}.{image_format}"
+def build_image_url(service_id: str, quality: str, image_format: str, size: str = "full") -> str:
+    # size par defaut "!3600,3600" (fixe via --iiif-size) : on demande a Gallica
+    # de downscaler cote serveur (cote long <= 3600 px, ~300 DPI). Gains : (1) evite
+    # les 403 intermittents que Gallica renvoie sur la pleine resolution ; (2) download
+    # ~2x plus leger ; (3) conversion locale allegee (plus de resampling 24 Mpx, juste
+    # la mise en gris). Region reste "full" (page entiere).
+    return f"{service_id}/full/{size}/0/{quality}.{image_format}"
+
+
+# Normalisation des images stockees a ~300 DPI gris. Gallica ignore parfois la
+# qualite `bitonal` et sert de la couleur pleine, parfois en tres haute
+# resolution (~525 DPI / 24 MP) : inutile pour l'OCR (standard = 300 DPI) et
+# ingerable (corpus complet ~1,4 To en l'etat contre ~150-250 Go normalise).
+# MAX_EDGE borne le cote long ; COMPRESS_LEVEL=9 = quasi-optimal sans le cout
+# CPU de optimize=True (qui rendait la conversion 5x plus lente).
+IMAGE_MAX_EDGE = 3600
+IMAGE_COMPRESS_LEVEL = 9
+
+
+def downscale_and_grayscale_png(content: bytes) -> bytes:
+    """Normalise une image en PNG 8-bit gris, cote long <= IMAGE_MAX_EDGE.
+
+    - Couleur (RGB) -> gris (L) : l'OCR n'utilise pas la couleur.
+    - Surdimensionnee (> ~300 DPI) -> redimensionnee (LANCZOS), aspect preserve.
+    - Deja en gris (L/1) ET a la bonne taille -> renvoyee intacte (aucun
+      re-encodage, donc aucune degradation des pages deja correctes).
+    En cas d'echec Pillow, renvoie l'octet brut : on ne perd jamais un
+    telechargement reussi."""
+    try:
+        from io import BytesIO
+        from PIL import Image
+
+        with Image.open(BytesIO(content)) as im:
+            needs_gray = im.mode not in ("L", "1")
+            needs_resize = max(im.size) > IMAGE_MAX_EDGE
+            if not needs_gray and not needs_resize:
+                return content
+            if needs_gray:
+                im = im.convert("L")
+            if needs_resize:
+                scale = IMAGE_MAX_EDGE / max(im.size)
+                im = im.resize(
+                    (round(im.width * scale), round(im.height * scale)),
+                    Image.LANCZOS,
+                )
+            out = BytesIO()
+            im.save(out, format="PNG", compress_level=IMAGE_COMPRESS_LEVEL)
+            return out.getvalue()
+    except Exception:
+        return content
 
 
 def download_binary(
@@ -243,7 +307,11 @@ def download_binary(
         circuit_breaker.record_success()
         return response.content
     except Exception as exc:
-        circuit_breaker.record_failure(exc, context=f"url={url}")
+        if CircuitBreaker429.is_definitive_skip(exc):
+            # 404 : page inexistante cote Gallica, ne compte pas dans le breaker.
+            circuit_breaker.record_skip(context=f"url={url}")
+        else:
+            circuit_breaker.record_failure(exc, context=f"url={url}")
         raise
 
 
@@ -286,6 +354,20 @@ def main() -> None:
         help="Nombre max de pauses du circuit breaker avant arret definitif.")
     parser.add_argument("--quality", default="bitonal")
     parser.add_argument("--format", default="jpg")
+    parser.add_argument(
+        "--iiif-size",
+        default="!3600,3600",
+        help="Parametre size IIIF (defaut '!3600,3600' = downscale serveur cote long "
+             "<=3600 px). 'full' = pleine resolution (que Gallica 403 par intermittence).",
+    )
+    parser.add_argument(
+        "--no-grayscale",
+        dest="grayscale",
+        action="store_false",
+        help="Desactive la normalisation (gris 8-bit + downscale ~300 DPI) "
+             "appliquee par defaut a chaque image (indispensable cote disque).",
+    )
+    parser.set_defaults(grayscale=True)
     parser.add_argument(
         "--max-pages",
         type=int,
@@ -436,7 +518,7 @@ def main() -> None:
 
             try:
                 service_id = extract_canvas_image_service_id(canvas)
-                image_url = build_image_url(service_id, args.quality, args.format)
+                image_url = build_image_url(service_id, args.quality, args.format, args.iiif_size)
                 content = download_binary(
                     session,
                     limiter,
@@ -446,6 +528,8 @@ def main() -> None:
                 )
                 if not content:
                     raise ValueError("Contenu image vide")
+                if args.grayscale:
+                    content = downscale_and_grayscale_png(content)
                 image_file.write_bytes(content)
                 downloaded += 1
             except CircuitBreakerStop as cb_exc:
