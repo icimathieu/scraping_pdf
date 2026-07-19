@@ -248,7 +248,10 @@ def main() -> None:
     parser.add_argument("--cb-threshold", type=int, default=5)
     parser.add_argument("--cb-sleep-seconds", type=int, default=600)
     parser.add_argument("--cb-max-cooldowns", type=int, default=3)
-    parser.add_argument("--dpi", type=int, default=300)
+    parser.add_argument("--dpi", type=int, default=200,
+        help="DPI de rendu. Defaut 200 : les PDF Gallica embarquent ~140 ppi, "
+             "donc 150/200/300 donnent un OCR identique (benchmark vs verite terrain) ; "
+             "200 = leger confort sans gonfler le disque.")
     parser.add_argument("--bitonal-threshold", type=int, default=180,
         help="Seuil 0-255 utilise uniquement si --mode bitonal.")
     parser.add_argument("--mode", choices=("gray", "bitonal"), default="gray",

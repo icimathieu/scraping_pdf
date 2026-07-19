@@ -319,7 +319,9 @@ def main() -> None:
         help="Seuil au-dela duquel un .part qui n'a plus progresse est considere "
              "comme une connexion coupee par le serveur.")
     parser.add_argument("--step2-progress-log-seconds", type=int, default=10)
-    parser.add_argument("--dpi", type=int, default=300)
+    parser.add_argument("--dpi", type=int, default=200,
+        help="DPI de rendu images. Defaut 200 (PDF Gallica ~140 ppi embarque : "
+             "150/200/300 donnent un OCR identique au benchmark vs verite terrain).")
     parser.add_argument("--bitonal-threshold", type=int, default=180,
         help="Seuil 0-255 utilise uniquement si --mode bitonal.")
     parser.add_argument("--mode", choices=("gray", "bitonal"), default="gray",
