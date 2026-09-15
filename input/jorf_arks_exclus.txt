@@ -1,0 +1,20 @@
+# Tables alphabetiques annuelles du Journal officiel, a exclure du corpus des
+# debats (demande explicite : "seuls les comptes-rendus de debats nous
+# interessent, pas les tables alphabetiques/analytiques").
+#
+# Identifiees par leur numero de fascicule "N0"/"N00" (services/OAIRecord),
+# systematiquement dates du 1er janvier. Verifie visuellement sur
+# bpt6k2096312z, dont la page 1 porte "TABLE ALPHABETIQUE DE L ANNEE 1880".
+#
+# Les tables de 1873 et 1875 ne sont pas ici : Gallica les publie sans date de
+# jour (libelle "1873" / "1875"), elles sont deja ecartees par la regle
+# "pas de date de jour" de construire_entree_jorf.py. Ce qui boucle le compte :
+# 8 ici + 2 sans date = 10 tables, une par annee de 1871 a 1880.
+bpt6k2093191z   # 1871-01-01  (A3,N0)    60 p.
+bpt6k20934769   # 1872-01-01  (A4,N0)    57 p.
+bpt6k20924263   # 1874-01-01  (A6,N00)   60 p.
+bpt6k20938669   # 1876-01-01  (A8,N0)    64 p.
+bpt6k20942261   # 1877-01-01  (A9,N0)   104 p.
+bpt6k2094585x   # 1878-01-01  (A10,N0)  156 p.
+bpt6k20959527   # 1879-01-01  (A11,N0)  104 p.
+bpt6k2096312z   # 1880-01-01  (A12,N0)  169 p.
