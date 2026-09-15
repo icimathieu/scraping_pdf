@@ -50,6 +50,9 @@ gallica.bnf.fr_cookies.txt
 # Ops perso rog-server (chemins/IP/topic personnels — non publies)
 scripts/rog_server/
 
+# Scraping PDF "forge" (depend d'un projet de stage prive ; publication = decision explicite)
+scripts/forge_pdf/
+
 # Entree generee pour rog-server (recreable via scripts/rog_server/make_rog_input.py)
 input/arks_partition_iiif_rogserver.json
 
@@ -62,3 +65,30 @@ __pycache__/
 .vscode/
 .idea/
 CLAUDE.md
+CLAUDE_historique.md
+
+# fichiers de travail des runs de collecte (manifestes derives, logs, garde-fous)
+.runs/
+.probe/
+
+# Sources Internet Archive telechargees (zips volumineux)
+ia_revue_internationale_enseignement/
+
+# Sauvegardes manuelles
+*.bak-*
+*.bak.*
+
+# Etat d'exploitation propre a la flotte (noms de machines, chemins serveur)
+input/pdf_collectes_ledger.json
+input/arks_pdf_production.json
+input/arks_pdf_restants_imac.json
+scripts/pipeline_presse/ops/
+scripts/pipeline_jorf/nettoyer_antec_jorf.sh
+state/
+
+# Presse : inventaire Gallica volumineux et sorties regenerables (sauvegarde = HF manifests_presse/)
+input/presse_fascicules.json
+input/presse_pagination.jsonl
+input/presse_numeros.json
+input/inventaire_presse/
+manifests_presse/
