@@ -46,16 +46,26 @@ class CircuitBreakerStop(RuntimeError):
     pass
 
 
+# Seuil au-dela duquel une 1ere passe ratee ressemble a du throttling plutot
+# qu'a un trou de pagination, et duree de la pause qu'on s'impose alors avant
+# la 2e passe (la fenetre de throttling de Gallica dure ~10 min).
+RETRY_BURST_PAGES = 4
+RETRY_BURST_SLEEP_SECONDS = 900.0
+
+
 class CircuitBreaker429:
     """Compte toutes les erreurs consecutives (pas seulement les 429).
     Apres `threshold` echecs : sleep `sleep_seconds`. Apres `max_cooldowns`
     sleeps : raise CircuitBreakerStop pour arret definitif."""
 
-    def __init__(self, threshold: int, sleep_seconds: int, max_cooldowns: int = 2) -> None:
+    def __init__(self, threshold: int, sleep_seconds: int, max_cooldowns: int = 2,
+                 skip_burst_threshold: int = 8) -> None:
         self.threshold = max(1, threshold)
         self.sleep_seconds = max(1, sleep_seconds)
         self.max_cooldowns = max(1, max_cooldowns)
+        self.skip_burst_threshold = max(1, skip_burst_threshold)
         self.consecutive_failures = 0
+        self.consecutive_skips = 0
         self.cooldowns_used = 0
 
     @staticmethod
@@ -68,26 +78,59 @@ class CircuitBreaker429:
 
     @staticmethod
     def is_definitive_skip(exc: Exception) -> bool:
-        """404 = la page n'existe pas cote Gallica (trou de pagination). Erreur
-        permanente : ne doit PAS compter dans le breaker, qui est reserve aux
-        429 et erreurs reseau transitoires. Reessayer ne la fera jamais
-        apparaitre, donc une rafale de 404 ne doit pas declencher de cooldown."""
+        """404 = Gallica ne sert pas cette page. Deux causes, opposees :
+
+        - trou de pagination reel : la page n'existe pas, reessayer est inutile ;
+        - THROTTLING : Gallica repond aussi 404 quand il nous rationne
+          (mesure le 2026-09-06, puis le 2026-09-11 sur le JORF).
+
+        On ne peut pas les distinguer sur une requete isolee, mais on le peut
+        sur la SERIE : un trou reel fait 1 a 3 pages eparses, un throttling en
+        fait des dizaines d'affilee. D'ou le comptage des skips CONSECUTIFS
+        dans record_skip()."""
         if isinstance(exc, requests.HTTPError) and getattr(exc, "response", None) is not None:
             return exc.response.status_code == 404
         return False
 
     def record_skip(self, context: str) -> None:
-        """Page absente (404) : evenement definitif, neutre pour le breaker.
-        On ne touche pas consecutive_failures (ni +1 ni reset) : seules les
-        vraies erreurs transitoires comptent vers le cooldown."""
-        print(f"[INFO][circuit_breaker] skip page absente (404) context={context}")
+        """Page absente (404) : neutre pour consecutive_failures, MAIS compte
+        dans consecutive_skips.
+
+        Pourquoi ce second compteur (ajoute 2026-09-11) : le fix du 2026-06-12
+        rendait le 404 totalement neutre, ce qui etait juste tant qu'un 404
+        signifiait "trou de pagination permanent". Depuis qu'on sait que
+        Gallica throttle EN 404, cette neutralite rendait le breaker aveugle
+        au rationnement : le scraper martelait a 4 img/min pendant que Gallica
+        refusait tout, et gravait les pertes transitoires en "pages absentes".
+        Constate sur le JORF le 2026-09-11 : debit tombe de 3,9 a 1,3 img/min,
+        268 pages declarees absentes dont 2/2 servies en HTTP 200 par une sonde
+        isolee depuis une autre machine.
+
+        Une rafale de skips consecutifs declenche donc le meme cooldown qu'une
+        rafale d'erreurs. Un vrai trou de pagination (1 a 3 pages) reste sous
+        le seuil et ne coute rien."""
+        self.consecutive_skips += 1
+        print(
+            f"[INFO][circuit_breaker] skip page absente (404) "
+            f"streak={self.consecutive_skips}/{self.skip_burst_threshold} context={context}"
+        )
+        if self.consecutive_skips >= self.skip_burst_threshold:
+            self.consecutive_skips = 0
+            self._cooldown(
+                reason=(
+                    f"{self.skip_burst_threshold} skips 404 consecutifs "
+                    f"(signature de throttling, pas de trou de pagination)"
+                )
+            )
 
     def record_success(self) -> None:
-        if self.consecutive_failures > 0:
+        if self.consecutive_failures > 0 or self.consecutive_skips > 0:
             print(
-                f"[INFO][circuit_breaker] reset consecutive_failures={self.consecutive_failures} after success"
+                f"[INFO][circuit_breaker] reset consecutive_failures={self.consecutive_failures} "
+                f"consecutive_skips={self.consecutive_skips} after success"
             )
         self.consecutive_failures = 0
+        self.consecutive_skips = 0
 
     def record_failure(self, exc: Exception, context: str) -> None:
         self.consecutive_failures += 1
@@ -98,19 +141,59 @@ class CircuitBreaker429:
             f"kind={kind} context={context}"
         )
         if self.consecutive_failures >= self.threshold:
-            if self.cooldowns_used >= self.max_cooldowns:
-                raise CircuitBreakerStop(
-                    f"circuit_breaker_stop: {self.consecutive_failures} echecs consecutifs "
-                    f"malgre {self.cooldowns_used} cooldown(s); arret definitif."
-                )
-            print(
-                f"[WARN][circuit_breaker] Sleeping {self.sleep_seconds}s after "
-                f"{self.consecutive_failures} consecutive failures "
-                f"(cooldown {self.cooldowns_used + 1}/{self.max_cooldowns})"
-            )
-            time.sleep(self.sleep_seconds)
-            self.cooldowns_used += 1
             self.consecutive_failures = 0
+            self._cooldown(reason=f"{self.threshold} echecs consecutifs")
+
+    def _cooldown(self, reason: str) -> None:
+        """Pause partagee par les deux declencheurs (erreurs et rafale de 404).
+
+        Le compteur de cooldowns est commun : si Gallica nous rationne, peu
+        importe qu'il le signifie par des 5xx ou par des 404, on doit finir par
+        laisser tomber et laisser le wrapper relancer plus tard (RESTART_SLEEP).
+        """
+        if self.cooldowns_used >= self.max_cooldowns:
+            raise CircuitBreakerStop(
+                f"circuit_breaker_stop: {reason} malgre "
+                f"{self.cooldowns_used} cooldown(s); arret definitif."
+            )
+        print(
+            f"[WARN][circuit_breaker] Sleeping {self.sleep_seconds}s ({reason}) "
+            f"(cooldown {self.cooldowns_used + 1}/{self.max_cooldowns})"
+        )
+        time.sleep(self.sleep_seconds)
+        self.cooldowns_used += 1
+
+
+def load_excluded_arks(path: str) -> Dict[str, str]:
+    """Charge la liste des arks a NE PAS tenter, sous forme {ark: raison}.
+
+    Pourquoi une liste nominative plutot qu'un skip generique des 403
+    (decide 2026-09-01) : Gallica renvoie aussi 403 quand il BANNIT une IP.
+    Traiter tout 403 comme "document restreint" ferait donc sauter en silence
+    des pans entiers du corpus le jour d'un bannissement, sans que rien ne le
+    signale. Une liste nominative, elle, ne peut rater que ce qu'on y a mis
+    explicitement, et le reste continue de declencher le circuit breaker.
+
+    Format du fichier : un ark par ligne, raison optionnelle apres '#'.
+    Les lignes vides et les lignes commencant par '#' sont ignorees.
+    """
+    excluded: Dict[str, str] = {}
+    if not path:
+        return excluded
+    p = Path(path)
+    if not p.exists():
+        print(f"[WARN][step3][exclusion] fichier d'exclusion introuvable: {path}")
+        return excluded
+    for raw in p.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        ark, _, reason = line.partition("#")
+        ark = ark.strip()
+        if ark:
+            excluded[ark] = reason.strip() or "exclu manuellement"
+    print(f"[INFO][step3][exclusion] {len(excluded)} ark(s) exclu(s) depuis {path}")
+    return excluded
 
 
 def build_session(user_agent: str) -> requests.Session:
@@ -348,10 +431,22 @@ def main() -> None:
     parser.add_argument("--timeout-seconds", type=int, default=30)
     parser.add_argument("--jitter-seconds", type=float, default=1.5,
         help="Jitter aleatoire ajoute apres chaque tick rate-limit, evite le pattern regulier exact.")
+    parser.add_argument("--exclude-arks", default="",
+        help="Fichier listant les arks a ne pas tenter (un par ligne, raison "
+             "apres '#'). Sert aux documents rendus inaccessibles par la source "
+             "(403 permanent). Ils sont marques skipped_restricted et retires "
+             "du total, au lieu de faire boucler le wrapper indefiniment.")
+    parser.add_argument("--retry-pass-sleep", type=float, default=60.0,
+        help="Pause (s) avant la 2e passe sur les pages en echec. Laisse le temps "
+             "a un throttle Gallica de retomber avant de declarer une page absente.")
     parser.add_argument("--cb-threshold", type=int, default=5)
     parser.add_argument("--cb-sleep-seconds", type=int, default=600)
     parser.add_argument("--cb-max-cooldowns", type=int, default=2,
         help="Nombre max de pauses du circuit breaker avant arret definitif.")
+    parser.add_argument("--skip-burst-threshold", type=int, default=8,
+        help="Nombre de 404 CONSECUTIFS au-dela duquel on considere que Gallica "
+             "throttle (et non que les pages sont absentes) : declenche un "
+             "cooldown. Un vrai trou de pagination fait 1-3 pages, pas 8.")
     parser.add_argument("--quality", default="bitonal")
     parser.add_argument("--format", default="jpg")
     parser.add_argument(
@@ -397,13 +492,29 @@ def main() -> None:
     session = build_session(args.user_agent)
     limiter = RateLimiter(args.requests_per_minute, args.jitter_seconds)
     circuit_breaker = CircuitBreaker429(
-        args.cb_threshold, args.cb_sleep_seconds, args.cb_max_cooldowns
+        args.cb_threshold, args.cb_sleep_seconds, args.cb_max_cooldowns,
+        args.skip_burst_threshold
     )
 
     processed_ok = 0
     processed_error = 0
     skipped_prior_error = 0
+    skipped_excluded = 0
+    excluded_arks = load_excluded_arks(args.exclude_arks)
     stopped_by_cb_message = ""
+
+    # --- Neutralisation du statut pre-rempli (2026-09-01) ---
+    # PIEGE : le fichier de partition livre chaque item avec "status": "ok"
+    # deja renseigne. Un ark que le scraper n'atteint JAMAIS (parce qu'il
+    # s'arrete avant, sur un blocage) conserve donc ce "ok" et se lit comme
+    # telecharge alors que rien ne l'a ete. C'est ce qui a fait croire que le
+    # scrape de rog etait a 99,95% alors que 411 arks n'avaient jamais ete
+    # tentes. On repasse donc tout le monde a "a_traiter" en entree : seuls
+    # les arks reellement traites dans ce run en ressortiront.
+    for item in items:
+        if str(item.get("issue_ark", "")).strip():
+            item["status"] = "a_traiter"
+            item["pipeline_status"] = "a_traiter"
 
     for item in items:
         if stopped_by_cb_message:
@@ -420,6 +531,33 @@ def main() -> None:
                 f"{item.get('error_stage','')} {item.get('error_code','')} {item.get('error_message','')}"
             )
             skipped_prior_error += 1
+            continue
+
+        # Ark explicitement exclu (rendu inaccessible par la source).
+        issue_ark = str(item.get("issue_ark", "")).strip()
+        if issue_ark in excluded_arks:
+            # Statut DEDIE (2026-09-01) : ni "ok" (rien n'est telecharge), ni
+            # "a_traiter" (il n'y a rien a tenter tant que la source refuse).
+            # "en_attente" dit exactement cela : document mis de cote, a
+            # retester plus tard si la restriction est levee.
+            item["status"] = "en_attente"
+            item["pipeline_status"] = "en_attente"
+            item["error_stage"] = ""
+            item["error_code"] = "restricted_by_source"
+            item["error_message"] = excluded_arks[issue_ark]
+            # Retire du total : on ne compte pas comme "manquantes" des pages
+            # qu'on a decide de ne pas demander. Sinon le scrape n'atteint
+            # jamais 100% et le wrapper relance sans fin.
+            item["images_total"] = 0
+            item["images_downloaded"] = 0
+            item["images_existing"] = 0
+            item["images_errors"] = 0
+            item["image_output_dir"] = ""
+            print(
+                f"[INFO][step3][exclusion][{item.get('revue','')}][{item.get('numero_id','')}] "
+                f"{issue_ark} exclu : {excluded_arks[issue_ark]}"
+            )
+            skipped_excluded += 1
             continue
 
         revue = sanitize_path_part(str(item.get("revue", "inconnue")), "inconnue")
@@ -510,38 +648,79 @@ def main() -> None:
         errors = 0
         first_error: Tuple[str, str] | None = None
 
-        for page_index, canvas in enumerate(canvases, start=1):
-            image_file = output_dir / f"page_{page_index:04d}.{args.format}"
-            if image_file.exists() and image_file.stat().st_size > 0 and not args.force:
-                existing += 1
-                continue
-
-            try:
-                service_id = extract_canvas_image_service_id(canvas)
-                image_url = build_image_url(service_id, args.quality, args.format, args.iiif_size)
-                content = download_binary(
-                    session,
-                    limiter,
-                    circuit_breaker,
-                    image_url,
-                    args.timeout_seconds,
-                )
-                if not content:
-                    raise ValueError("Contenu image vide")
-                if args.grayscale:
-                    content = downscale_and_grayscale_png(content)
-                image_file.write_bytes(content)
-                downloaded += 1
-            except CircuitBreakerStop as cb_exc:
-                stopped_by_cb_message = str(cb_exc)
-                print(f"[ERROR][step3][circuit_breaker_stop] {stopped_by_cb_message}")
-                if first_error is None:
-                    first_error = ("circuit_breaker_stop", stopped_by_cb_message)
+        # --- Telechargement en DEUX PASSES (ajoute 2026-09-01) ---
+        # Gallica ne renvoie pas toujours 429 quand il throttle : il repond aussi
+        # 404 ou coupe la connexion (Recv failure / reset by peer). L'ancienne
+        # boucle a passe unique gravait donc ces pertes TRANSITOIRES dans le
+        # marbre : la page etait comptee "absente definitivement" et jamais
+        # retentee (411 pages perdues sur 7 numeros cote antec, verifiees
+        # re-telechargeables ensuite). On rejoue donc toute page en echec une
+        # seconde fois, apres une pause, avant de la declarer manquante.
+        pending = list(enumerate(canvases, start=1))
+        for attempt_no in (1, 2):
+            if not pending or stopped_by_cb_message:
                 break
-            except Exception as exc:
-                errors += 1
-                if first_error is None:
-                    first_error = (error_code_from_exception(exc), str(exc))
+            if attempt_no == 2:
+                # La pause depend de ce que la 1ere passe a produit. Quelques
+                # pages en echec = trou de pagination probable, on retente vite.
+                # Une rafale = Gallica throttle, et la fenetre dure ~10 min
+                # (mesuree le 2026-09-06) : retenter au bout de 2 min retombe
+                # en plein dedans et PROLONGE la punition, ce qui gravait les
+                # pertes transitoires en "pages absentes" (JORF, 2026-09-11).
+                pause = args.retry_pass_sleep
+                if len(pending) >= RETRY_BURST_PAGES:
+                    pause = max(pause, RETRY_BURST_SLEEP_SECONDS)
+                print(
+                    f"[INFO][step3][retry_pass][{item.get('revue','')}][{numero_id}] "
+                    f"2e passe sur {len(pending)} page(s) en echec (pause {pause:.0f}s)"
+                )
+                time.sleep(pause)
+            failed: List[Tuple[int, dict]] = []
+            for page_index, canvas in pending:
+                image_file = output_dir / f"page_{page_index:04d}.{args.format}"
+                if image_file.exists() and image_file.stat().st_size > 0 and not args.force:
+                    if attempt_no == 1:
+                        existing += 1
+                    continue
+
+                try:
+                    service_id = extract_canvas_image_service_id(canvas)
+                    image_url = build_image_url(service_id, args.quality, args.format, args.iiif_size)
+                    content = download_binary(
+                        session,
+                        limiter,
+                        circuit_breaker,
+                        image_url,
+                        args.timeout_seconds,
+                    )
+                    if not content:
+                        raise ValueError("Contenu image vide")
+                    if args.grayscale:
+                        content = downscale_and_grayscale_png(content)
+                    image_file.write_bytes(content)
+                    downloaded += 1
+                except CircuitBreakerStop as cb_exc:
+                    stopped_by_cb_message = str(cb_exc)
+                    print(f"[ERROR][step3][circuit_breaker_stop] {stopped_by_cb_message}")
+                    if first_error is None:
+                        first_error = ("circuit_breaker_stop", stopped_by_cb_message)
+                    break
+                except Exception as exc:
+                    failed.append((page_index, canvas))
+                    # On garde l'erreur de la DERNIERE passe : c'est elle qui dit
+                    # pourquoi la page est definitivement absente.
+                    if first_error is None or attempt_no == 2:
+                        first_error = (error_code_from_exception(exc), str(exc))
+            pending = failed
+
+        # Seules les pages ayant echoue aux DEUX passes comptent comme erreurs.
+        errors = len(pending)
+        if pending and not stopped_by_cb_message:
+            print(
+                f"[WARN][step3][pages_manquantes][{item.get('revue','')}][{numero_id}] "
+                f"{errors} page(s) absentes apres 2 passes: "
+                f"{[i for i, _ in pending][:20]}"
+            )
 
         item["images_total"] = total_pages
         item["images_downloaded"] = downloaded
@@ -581,6 +760,7 @@ def main() -> None:
         "processed_ok": processed_ok,
         "processed_error": processed_error,
         "skipped_prior_error": skipped_prior_error,
+        "skipped_excluded": skipped_excluded,
     }
 
     save_json(output_path, payload)
@@ -588,8 +768,13 @@ def main() -> None:
     print(
         "Termine: "
         f"{processed_ok} numeros OK, {processed_error} numeros en erreur, "
-        f"{skipped_prior_error} ignores (erreurs precedentes)"
+        f"{skipped_prior_error} ignores (erreurs precedentes), "
+        f"{skipped_excluded} en attente (inaccessibles a la source)"
     )
+    import collections as _c
+    repartition = _c.Counter(str(it.get("status", "") or "?") for it in items)
+    print("Repartition des statuts: " + ", ".join(
+        f"{k}={v}" for k, v in sorted(repartition.items())))
     print(f"JSON mis a jour: {output_path}")
     print(f"CSV mis a jour: {output_csv_path}")
     print(f"Images: {image_root}")
