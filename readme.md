@@ -21,21 +21,30 @@ scraping_pdf/
 │   │   ├── scraping_manifest_gallica.py    #   etape 2 : ARK -> manifest.json IIIF
 │   │   ├── analyze_pages_and_partition.py  #   etape 2.5 : extrait pages_total + propose partition PDF/IIIF
 │   │   └── scraping_images_gallica.py      #   etape 3 : manifest -> page_XXXX.jpg bitonal full
+│   ├── pipeline_presse/                       # inventaire IIIF de la presse generaliste
+│   ├── pipeline_jorf/                      # pipeline JORF 1870-1880 (quotidien, voie IIIF)
+│   │   ├── inventaire_jorf.py              #   etape 1 : Issues + Pagination (remplace le scraping des manifestes)
+│   │   ├── construire_entree_jorf.py       #   etape 2 : deduplication par date + manifestes synthetiques
+│   │   └── reparer_jorf.py                 #   etape 3 bis : comble les trous via l'autre numerisation
 │   └── scraping_notices_revues.py          # metadonnees bibliographiques des revues (OAIRecord)
 ├── pdf_process/                            # sorties pipeline PDF (gitignored)
 ├── images_process/                         # sorties images (PDF→PNG ET IIIF→JPG) (gitignored)
 ├── manifest_iiif_process/                  # manifestes IIIF + state_pdf.json (gitignored sauf state)
 ├── pipeline_pdf.md                         # specification de la pipeline PDF
 ├── pipeline_manifest.md                    # specification de la pipeline IIIF + partition
+├── pipeline_jorf.md                        # specification de la pipeline JORF 1870-1880
+├── pipeline_presse.md                      # specification de l'inventaire presse 1870-1914
 ├── CLAUDE.md                               # conventions de commande (pour usage Claude Code)
 ├── requirements.txt                        # dependances Python pinnees
 ├── readme.md                               # ce fichier
 └── LICENSE
 ```
 
-Les deux fichiers de spécification détaillent chaque étape :
+Les fichiers de spécification détaillent chaque étape :
 - [pipeline_pdf.md](pipeline_pdf.md) — pipeline PDF (gros numéros)
 - [pipeline_manifest.md](pipeline_manifest.md) — pipeline IIIF + partition de page (petits numéros)
+- [pipeline_jorf.md](pipeline_jorf.md) — pipeline JORF 1870-1880 (presse quotidienne, voie IIIF sans manifestes)
+- [pipeline_presse.md](pipeline_presse.md) — inventaire IIIF de la presse généraliste (18 titres, 1870-1914)
 
 ## Vue d'ensemble
 
@@ -47,6 +56,7 @@ Deux pipelines coexistent, complémentaires :
 |---|---|---|---|
 | **PDF** (`scripts/pipeline_pdf/`) | `https://gallica.bnf.fr/{ark}.pdf` (téléchargement Selenium/Firefox) | PNG/TIFF bitonal | **Gros numéros (≥500 pages)** — environ 10 % des numéros mais 73 % du volume |
 | **IIIF** (`scripts/pipeline_manifest_iiif/`) | `https://gallica.bnf.fr/iiif/{ark}/manifest.json` + Image API en bitonal full | JPG bitonal | **Petits numéros (<500 pages)** — environ 90 % des numéros, 27 % du volume |
+| **JORF** (`scripts/pipeline_jorf/`) | services `Issues` + `Pagination`, puis Image API | JPG 2864 px | **Journal officiel 1870-1880** — ~3 700 numéros quotidiens, ~97 600 pages |
 
 La partition à 500 pages est calculée à partir des manifestes IIIF par `analyze_pages_and_partition.py`. 
 
@@ -137,9 +147,12 @@ Mesurées empiriquement face au throttling de Gallica (mai 2026) :
 | Issues (étape 1) | 10/min | 5-10/min | Très permissif, ne déclenche jamais de 429. |
 | Manifest IIIF (étape 2 manifest) | non documenté | **1 req/min** | Plus strict que l'Image API en pratique. Burst ~20 puis throttle dur. |
 | Image IIIF full bitonal | 5/min (phase transitoire) | **4-5/min** | Limite documentée, confirmée par benchmark (0 % 429 à 4/min, 28 % à 6/min). |
+| Pagination (`services/Pagination`) | non documenté | **40 req/min** | Mesuré sans un seul 429 (45 requêtes, 09/2026). Renvoie `nbVueImages`, égal au nombre de canvas du manifeste — permet d'éviter le scraping des manifestes. |
 | PDF Gallica (étape 2 PDF) | non documenté | **1 PDF / 5 min** | Très conservateur. Pas une API documentée, comportement instable. |
 
 Ces valeurs sont les défauts des scripts. Le circuit breaker arrête le run après N cooldowns consécutifs.
+
+⚠️ **Gallica throttle en 404, pas seulement en 429.** Une rafale de requêtes sur l'Image API fait répondre 404 à des pages qui existent bel et bien : elles reviennent en 200 après quelques minutes de pause. Ne jamais conclure qu'une page est absente du corpus sur la foi d'une sonde rapprochée — seule la convergence du scraper à cadence nominale fait foi.
 
 ## Licence
 

@@ -1,0 +1,136 @@
+{
+  "source_arks": "extraits hors ligne du corpus Europeana local (champ identifier/relation)",
+  "periode": [
+    1870,
+    1914
+  ],
+  "total_titres": 18,
+  "titres": [
+    {
+      "slug": "l_action_francaise",
+      "ark_titre": "ark:/12148/cb326819451/date",
+      "cb": "cb326819451",
+      "annees_europeana": "1908-1914",
+      "numeros_europeana": 2459
+    },
+    {
+      "slug": "l_echo_de_paris",
+      "ark_titre": "ark:/12148/cb34429768r/date",
+      "cb": "cb34429768r",
+      "annees_europeana": "1884-1914",
+      "numeros_europeana": 10398
+    },
+    {
+      "slug": "l_humanite",
+      "ark_titre": "ark:/12148/cb327877302/date",
+      "cb": "cb327877302",
+      "annees_europeana": "1904-1914",
+      "numeros_europeana": 3870
+    },
+    {
+      "slug": "l_intransigeant",
+      "ark_titre": "ark:/12148/cb32793876w/date",
+      "cb": "cb32793876w",
+      "annees_europeana": "1880-1914",
+      "numeros_europeana": 11688
+    },
+    {
+      "slug": "l_univers",
+      "ark_titre": "ark:/12148/cb34520232c/date",
+      "cb": "cb34520232c",
+      "annees_europeana": "1870-1914",
+      "numeros_europeana": 14836
+    },
+    {
+      "slug": "la_croix",
+      "ark_titre": "ark:/12148/cb343631418/date",
+      "cb": "cb343631418",
+      "annees_europeana": "1880-1914",
+      "numeros_europeana": 9253
+    },
+    {
+      "slug": "le_constitutionnel",
+      "ark_titre": "ark:/12148/cb32747578p/date",
+      "cb": "cb32747578p",
+      "annees_europeana": "1870-1914",
+      "numeros_europeana": 12502
+    },
+    {
+      "slug": "le_figaro",
+      "ark_titre": "ark:/12148/cb34355551z/date",
+      "cb": "cb34355551z",
+      "annees_europeana": "1870-1914",
+      "numeros_europeana": 12717
+    },
+    {
+      "slug": "le_gaulois",
+      "ark_titre": "ark:/12148/cb32779904b/date",
+      "cb": "cb32779904b",
+      "annees_europeana": "1870-1914",
+      "numeros_europeana": 16307
+    },
+    {
+      "slug": "le_journal_des_debats_politiques_et_litteraires",
+      "ark_titre": "ark:/12148/cb39294634r/date",
+      "cb": "cb39294634r",
+      "annees_europeana": "1870-1914",
+      "numeros_europeana": 16256
+    },
+    {
+      "slug": "le_matin",
+      "ark_titre": "ark:/12148/cb328123058/date",
+      "cb": "cb328123058",
+      "annees_europeana": "1884-1914",
+      "numeros_europeana": 11101
+    },
+    {
+      "slug": "le_petit_journal",
+      "ark_titre": "ark:/12148/cb32895690j/date",
+      "cb": "cb32895690j",
+      "annees_europeana": "1872-1914",
+      "numeros_europeana": 13633
+    },
+    {
+      "slug": "le_petit_journal_illustre_supplement_du_dimanche",
+      "ark_titre": "ark:/12148/cb32836564q/date",
+      "cb": "cb32836564q",
+      "annees_europeana": "1884-1914",
+      "numeros_europeana": 1614
+    },
+    {
+      "slug": "le_petit_parisien",
+      "ark_titre": "ark:/12148/cb34419111x/date",
+      "cb": "cb34419111x",
+      "annees_europeana": "1876-1914",
+      "numeros_europeana": 12661
+    },
+    {
+      "slug": "le_siecle",
+      "ark_titre": "ark:/12148/cb32868136g/date",
+      "cb": "cb32868136g",
+      "annees_europeana": "1870-1914",
+      "numeros_europeana": 16309
+    },
+    {
+      "slug": "le_temps",
+      "ark_titre": "ark:/12148/cb34431794k/date",
+      "cb": "cb34431794k",
+      "annees_europeana": "1870-1914",
+      "numeros_europeana": 15921
+    },
+    {
+      "slug": "ouest_eclair_ed_de_caen",
+      "ark_titre": "ark:/12148/cb41193642z/date",
+      "cb": "cb41193642z",
+      "annees_europeana": "1912-1914",
+      "numeros_europeana": 1028
+    },
+    {
+      "slug": "ouest_eclair_ed_de_rennes",
+      "ark_titre": "ark:/12148/cb32830550k/date",
+      "cb": "cb32830550k",
+      "annees_europeana": "1899-1914",
+      "numeros_europeana": 5607
+    }
+  ]
+}
